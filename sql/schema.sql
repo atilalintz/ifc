@@ -71,7 +71,7 @@ CREATE TABLE grupos (
 -- -------------------------------------------
 CREATE TABLE selecoes (
     id          CHAR(36)     NOT NULL,
-    grupo_id    CHAR(36)     NOT NULL,
+    grupo_id    CHAR(36)     NULL,
     nome        VARCHAR(100) NOT NULL,
     sigla       VARCHAR(10)  NOT NULL,
     bandeira_url VARCHAR(500) NULL,
