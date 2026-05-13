@@ -1,15 +1,4 @@
-Vamos lá! O Passo 6 vai ser a primeira tela real — lista os álbuns do usuário e permite criar um novo.
-
-Primeiro cria o layout base que todas as páginas vão reaproveitar:
-bash
-
-nano /var/www/html/ifc/pages/layout.php
-
-Cole:
-php
-
 <?php
-// pages/layout.php — Layout base reutilizável
 function layoutInicio(string $titulo): void { ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
