@@ -36,7 +36,7 @@ $ordemAlbum = [
 
     // Grupo B
     ['B',   'CAN', 'Canadá'],
-    ['B',   'BIH', 'Bósnia e Herzegovina'],
+    ['B',   'BIH', 'Bósnia'],
     ['B',   'QAT', 'Catar'],
     ['B',   'SUI', 'Suíça'],
 
@@ -90,7 +90,7 @@ $ordemAlbum = [
 
     // Grupo K
     ['K',   'POR', 'Portugal'],
-    ['K',   'COD', 'Rep. Democrática do Congo'],
+    ['K',   'COD', 'Congo'],
     ['K',   'UZB', 'Uzbequistão'],
     ['K',   'COL', 'Colômbia'],
 
