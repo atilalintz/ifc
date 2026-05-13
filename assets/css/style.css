@@ -200,10 +200,12 @@ main { flex: 1; padding: 2rem 0; }
 .filtros-barra input:focus { outline: 2px solid var(--verde); border-color: transparent; }
 .filtros-barra select {
     padding: .4rem .65rem;
-    border: 1px solid var(--borda);
+    border: 2px solid var(--azul);
     border-radius: var(--radius);
     font-size: .85rem;
-    background: #fff;
+    background: #eef1f8;
+    color: var(--azul);
+    font-weight: 600;
     cursor: pointer;
     max-width: 160px;
 }
@@ -229,15 +231,16 @@ main { flex: 1; padding: 2rem 0; }
 .pilula {
     padding: .28rem .6rem;
     border-radius: 99px;
-    border: 2px solid var(--borda);
-    background: #fff;
+    border: 2px solid var(--azul);
+    background: #eef1f8;
+    color: var(--azul);
     font-size: .8rem;
     font-weight: 600;
     cursor: pointer;
     transition: all .15s;
     white-space: nowrap;
 }
-.pilula:hover { border-color: var(--verde); color: var(--verde); }
+.pilula:hover { background: var(--azul); color: #fff; }
 .pilula.ativa  { background: var(--verde); color: #fff; border-color: var(--verde); }
 
 /* ================================
@@ -345,20 +348,48 @@ main { flex: 1; padding: 2rem 0; }
 
 /* ================================
    Cards de figurinha
-   ================================ */
-.figurinhas-grid { display: flex; flex-wrap: wrap; gap: .45rem; }
+   ================================. */
+.figurinhas-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: .4rem;
+}
+
+@media (max-width: 768px) {
+    .figurinhas-grid {
+        grid-template-columns: repeat(5, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .figurinhas-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (max-width: 360px) {
+    .figurinhas-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
 .figurinha-card {
-    background: #fff;
-    border: 2px solid var(--borda);
+    background: #f7f7f7;
+    border: 2px solid #bbb;
     border-radius: var(--radius);
-    padding: .35rem .45rem;
+    padding: .3rem .3rem;
     text-align: center;
-    min-width: 68px;
     transition: border-color .15s, background .15s;
 }
 .figurinha-card.tem      { border-color: var(--verde); background: #e8f5ee; }
 .figurinha-card.repetida { border-color: var(--amarelo); background: #fffbe6; }
-.fig-codigo { font-size: .72rem; font-weight: 700; display: block; margin-bottom: .25rem; }
+.fig-codigo {
+    font-size: .85rem;
+    font-weight: 800;
+    display: block;
+    margin-bottom: .3rem;
+    color: var(--azul);
+    letter-spacing: .03em;
+}
 .fig-controles { display: flex; align-items: center; gap: .25rem; justify-content: center; }
 .fig-qtd { font-size: .88rem; font-weight: 700; min-width: 16px; text-align: center; }
 .btn-inc, .btn-dec {

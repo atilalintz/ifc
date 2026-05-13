@@ -236,12 +236,6 @@ function aplicarFiltros() {
                 || (status === 'repetida' && qtd >= 2);
             card.style.display = (codigoMatch && statusMatch) ? '' : 'none';
         });
-
-        // Abre automaticamente se há busca/filtro ativo
-        if ((busca || status) && row.style.display !== 'none') {
-            row.querySelector('.selecao-figurinhas').classList.add('aberto');
-            row.querySelector('.selecao-seta').style.transform = 'rotate(180deg)';
-        }
     });
 }
 
