@@ -404,3 +404,48 @@ main { flex: 1; padding: 2rem 0; }
 }
 .btn-inc:hover { background: var(--verde); color: #fff; border-color: var(--verde); }
 .btn-dec:hover { background: #c0392b; color: #fff; border-color: #c0392b; }
+.csv-acoes {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+}
+/* Barra de ações */
+.acoes-barra {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+    position: relative;
+}
+
+/* Dropdown */
+.dropdown { position: relative; }
+.dropdown-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    background: #fff;
+    border: 1px solid var(--borda);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0,0,0,.1);
+    z-index: 200;
+    min-width: 160px;
+    overflow: hidden;
+}
+
+.dropdown-menu.aberto { display: block; }
+
+.dropdown-item {
+    display: block;
+    padding: .6rem 1rem;
+    font-size: .88rem;
+    color: var(--texto);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background .15s;
+}
+.dropdown-item:hover { background: var(--cinza); }

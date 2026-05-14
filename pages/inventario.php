@@ -91,6 +91,25 @@ layoutInicio('Inventário — ' . $album['nome']);
         <span>Repetidas: <strong id="stat-rep"><?= $album['total_repetidas'] ?></strong></span>
     </div>
 </div>
+<div class="acoes-barra">
+    <button class="btn-sm btn-todas-inc" onclick="atualizarTodas('incrementar')">+1 em todas</button>
+    <button class="btn-sm btn-todas-dec" onclick="atualizarTodas('decrementar')">−1 em todas</button>
+
+    <div class="dropdown">
+        <button class="btn-sm" onclick="toggleDropdown()">⬆⬇ Exp/Imp ▾</button>
+        <div class="dropdown-menu" id="dropdown-menu">
+            <a href="/api/csv?acao=exportar&album_id=<?= $albumId ?>" class="dropdown-item">
+                ⬇ Exportar CSV
+            </a>
+            <label class="dropdown-item" style="cursor:pointer">
+                ⬆ Importar CSV
+                <input type="file" id="csv-input" accept=".csv" style="display:none"
+                       onchange="importarCSV(this)">
+            </label>
+        </div>
+    </div>
+    <span id="csv-msg" style="font-size:.82rem;color:#666;"></span>
+</div>
 
 <!-- Filtros -->
 <div class="filtros-sticky">
@@ -102,8 +121,6 @@ layoutInicio('Inventário — ' . $album['nome']);
             <option value="tenho">Tenho (≥1)</option>
             <option value="repetida">Repetidas (≥2)</option>
         </select>
-        <button class="btn-sm btn-todas-inc" onclick="atualizarTodas('incrementar')">+1 em todas</button>
-	<button class="btn-sm btn-todas-dec" onclick="atualizarTodas('decrementar')">−1 em todas</button>
     </div>
     <!-- Pílulas de grupo -->
     <div class="grupos-pilulas">
@@ -306,6 +323,46 @@ async function atualizarTodas(acao) {
         await atualizar(figId, albumId, acao);
     }
 }
+// ── Importar CSV ────────────────────────────
+async function importarCSV(input) {
+    const arquivo = input.files[0];
+    if (!arquivo) return;
+
+    const msg = document.getElementById('csv-msg');
+    msg.textContent = 'Importando...';
+
+    const form = new FormData();
+    form.append('arquivo', arquivo);
+
+    const resp = await fetch(`/api/csv?acao=importar&album_id=<?= $albumId ?>`, {
+        method: 'POST',
+        body: form,
+    });
+    const data = await resp.json();
+
+    if (data.sucesso) {
+        msg.textContent = `✓ ${data.importados} figurinhas importadas!`;
+        msg.style.color = 'green';
+        document.getElementById('stat-pct').textContent  = data.percentual.toFixed(1) + '%';
+        document.getElementById('stat-falt').textContent = data.faltantes;
+        document.getElementById('stat-rep').textContent  = data.repetidas;
+        // Recarrega a página para refletir as quantidades
+        setTimeout(() => location.reload(), 1500);
+    } else {
+        msg.textContent = 'Erro ao importar.';
+        msg.style.color = 'red';
+    }
+    input.value = '';
+}
+// ── Dropdown Exp/Imp ────────────────────────
+function toggleDropdown() {
+    document.getElementById('dropdown-menu').classList.toggle('aberto');
+}
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.dropdown')) {
+        document.getElementById('dropdown-menu').classList.remove('aberto');
+    }
+});
 </script>
 
 <?php layoutFim(); ?>

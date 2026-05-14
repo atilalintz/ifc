@@ -11,6 +11,7 @@ $segmento = explode('/', $route)[0];
 // Rotas de API (retornam JSON)
 $apis = [
     'api/inventario' => 'api/inventario.php',
+    'api/csv'        => 'api/csv.php',
 ];
 
 // Rotas de páginas
