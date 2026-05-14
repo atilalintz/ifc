@@ -25,21 +25,46 @@ if ($acao === 'exportar') {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $nomeArquivo . '"');
 
-    $out = fopen('php://output', 'w');
-    fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM UTF-8
-    fputcsv($out, ['codigo', 'quantidade'], ',');
-
+    // Busca TODAS as figurinhas com quantidade (0 se não tem)
     $stmt = $db->prepare("
-        SELECT f.codigo, i.quantidade
-        FROM inventario_usuario i
-        JOIN figurinhas f ON f.id = i.figurinha_id
-        WHERE i.album_id = :aid AND i.quantidade > 0
+        SELECT f.codigo,
+               COALESCE(i.quantidade, 0) AS quantidade
+        FROM figurinhas f
+        LEFT JOIN inventario_usuario i
+            ON i.figurinha_id = f.id AND i.album_id = :aid
         ORDER BY f.codigo
     ");
     $stmt->execute([':aid' => $albumId]);
+    $figurinhas = $stmt->fetchAll();
 
-    while ($row = $stmt->fetch()) {
-        fputcsv($out, [$row['codigo'], $row['quantidade']], ',');
+    $out = fopen('php://output', 'w');
+    fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM UTF-8
+
+    // Cabeçalho 8 colunas
+    fputcsv($out, ['Codigo','Quantidade','Codigo','Quantidade','Codigo','Quantidade','Codigo','Quantidade'], ';');
+
+    // Agrupa em linhas de 4
+    $linha = [];
+    foreach ($figurinhas as $fig) {
+        // Quantidade exportada: max(0, qtd - 1)
+        // qtd=0 → faltante → exporta 0
+        // qtd=1 → colada   → exporta 0
+        // qtd=2 → 1 repetida → exporta 1
+        $qtdExportada = (int)$fig['quantidade'] >= 2 ? (int)$fig['quantidade'] : 0;
+
+        $linha[] = $fig['codigo'];
+        $linha[] = $qtdExportada;
+
+        if (count($linha) === 8) {
+            fputcsv($out, $linha, ';');
+            $linha = [];
+        }
+    }
+
+    // Última linha incompleta
+    if (!empty($linha)) {
+        while (count($linha) < 8) $linha[] = '';
+        fputcsv($out, $linha, ';');
     }
 
     fclose($out);
@@ -71,7 +96,7 @@ if ($acao === 'importar' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         SELECT id FROM figurinhas WHERE codigo = :codigo
     ");
     $stmtVerifica = $db->prepare("
-        SELECT id, quantidade FROM inventario_usuario
+        SELECT id FROM inventario_usuario
         WHERE album_id = :aid AND figurinha_id = :fid
     ");
     $stmtInsert = $db->prepare("
@@ -82,37 +107,43 @@ if ($acao === 'importar' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         UPDATE inventario_usuario SET quantidade = :qtd WHERE id = :id
     ");
 
-    while (($linha = fgetcsv($handle, 0, ',')) !== false) {
+    while (($linha = fgetcsv($handle, 0, ';')) !== false) {
         // Pula cabeçalho
         if ($primeira) { $primeira = false; continue; }
-        if (count($linha) < 2) continue;
 
-        $codigo = strtoupper(trim($linha[0]));
-        $qtd    = max(0, (int) trim($linha[1]));
+        // Processa pares codigo;quantidade na linha (até 4 pares = 8 colunas)
+        for ($i = 0; $i + 1 < count($linha); $i += 2) {
+            $codigo = strtoupper(trim($linha[$i]));
+            if (empty($codigo)) continue;
 
-        if (empty($codigo)) continue;
+            $qtdCSV = max(0, (int) trim($linha[$i + 1]));
 
-        // Busca figurinha
-        $stmtBusca->execute([':codigo' => $codigo]);
-        $figurinha = $stmtBusca->fetchColumn();
+            // Converte de volta: quantidade real = qtdCSV + 1 se > 0, senão 0
+            // qtdCSV=0 → faltante → quantidade real = 0
+            // qtdCSV=1 → 1 repetida → quantidade real = 2
+            // qtdCSV=2 → 2 repetidas → quantidade real = 3
+            $qtdReal = $qtdCSV >= 2 ? $qtdCSV : 0;
+            // Busca figurinha
+            $stmtBusca->execute([':codigo' => $codigo]);
+            $figurinhaId = $stmtBusca->fetchColumn();
+            if (!$figurinhaId) { $erros++; continue; }
 
-        if (!$figurinha) { $erros++; continue; }
+            // Verifica se já existe no inventário
+            $stmtVerifica->execute([':aid' => $albumId, ':fid' => $figurinhaId]);
+            $registroId = $stmtVerifica->fetchColumn();
 
-        // Verifica se já existe no inventário
-        $stmtVerifica->execute([':aid' => $albumId, ':fid' => $figurinha]);
-        $registro = $stmtVerifica->fetch();
-
-        if ($registro) {
-            $stmtUpdate->execute([':qtd' => $qtd, ':id' => $registro['id']]);
-        } else {
-            $stmtInsert->execute([
-                ':aid' => $albumId,
-                ':uid' => $usuario['id'],
-                ':fid' => $figurinha,
-                ':qtd' => $qtd,
-            ]);
+            if ($registroId) {
+                $stmtUpdate->execute([':qtd' => $qtdReal, ':id' => $registroId]);
+            } else if ($qtdReal > 0) {
+                $stmtInsert->execute([
+                    ':aid' => $albumId,
+                    ':uid' => $usuario['id'],
+                    ':fid' => $figurinhaId,
+                    ':qtd' => $qtdReal,
+                ]);
+            }
+            $total++;
         }
-        $total++;
     }
 
     fclose($handle);
