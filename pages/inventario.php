@@ -102,6 +102,8 @@ layoutInicio('Inventário — ' . $album['nome']);
             <option value="tenho">Tenho (≥1)</option>
             <option value="repetida">Repetidas (≥2)</option>
         </select>
+        <button class="btn-sm btn-todas-inc" onclick="atualizarTodas('incrementar')">+1 em todas</button>
+	<button class="btn-sm btn-todas-dec" onclick="atualizarTodas('decrementar')">−1 em todas</button>
     </div>
     <!-- Pílulas de grupo -->
     <div class="grupos-pilulas">
@@ -274,6 +276,35 @@ async function atualizar(figurinhaId, albumId, acao) {
     document.getElementById('stat-rep').textContent  = data.repetidas;
 
     aplicarFiltros();
+}
+
+// ── +1 / -1 em todas ───────────────────────
+async function atualizarTodas(acao) {
+    const albumId = '<?= $albumId ?>';
+
+    // Pega todos os cards visíveis
+    const cards = [...document.querySelectorAll('.figurinha-card')]
+        .filter(c => c.style.display !== 'none');
+
+    // No decrementar, ignora cards com quantidade 0
+    const alvo = acao === 'decrementar'
+        ? cards.filter(c => parseInt(c.dataset.qtd) > 0)
+        : cards;
+
+    if (alvo.length === 0) return;
+
+    // Confirmação para operação em massa
+    const msg = acao === 'incrementar'
+        ? `Adicionar +1 em ${alvo.length} figurinha(s)?`
+        : `Remover -1 de ${alvo.length} figurinha(s) com quantidade > 0?`;
+
+    if (!confirm(msg)) return;
+
+    // Processa em sequência para não sobrecarregar o servidor
+    for (const card of alvo) {
+        const figId = card.id.replace('fig-', '');
+        await atualizar(figId, albumId, acao);
+    }
 }
 </script>
 
