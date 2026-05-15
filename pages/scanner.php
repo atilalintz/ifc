@@ -41,9 +41,9 @@ layoutInicio('Scanner');
         <video id="camera" autoplay playsinline muted></video>
         <canvas id="canvas" style="display:none"></canvas>
         <div class="scanner-mira">
-            <div class="mira-linha mira-h"></div>
-            <div class="mira-linha mira-v"></div>
-        </div>
+	    <div class="mira-canto"></div>
+	    <p class="mira-dica">Alinhe o código aqui ↗</p>
+	</div>
         <div id="scanner-status" class="scanner-status">Iniciando câmera...</div>
     </div>
 
@@ -129,29 +129,70 @@ async function capturar() {
     status.textContent = 'Processando...';
     status.className = 'scanner-status';
 
-    canvas.width  = video.videoWidth;
-    canvas.height = video.videoHeight;
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+
+    canvas.width  = w;
+    canvas.height = h;
     ctx.drawImage(video, 0, 0);
 
-    const imageData = canvas.toDataURL('image/png');
+    // ── Recorta canto superior direito (25% largura x 20% altura) ──
+    const recorteX = Math.floor(w * 0.70); // começa em 70% da largura
+    const recorteY = 0;                     // começa do topo
+    const recorteW = Math.floor(w * 0.30); // 30% da largura
+    const recorteH = Math.floor(h * 0.25); // 25% da altura
+
+    // Canvas auxiliar para o recorte ampliado
+    const canvasRecorte = document.createElement('canvas');
+    canvasRecorte.width  = recorteW * 3; // amplia 3x para o OCR
+    canvasRecorte.height = recorteH * 3;
+    const ctxR = canvasRecorte.getContext('2d');
+
+    // Amplia o recorte
+    ctxR.drawImage(canvas,
+        recorteX, recorteY, recorteW, recorteH,
+        0, 0, canvasRecorte.width, canvasRecorte.height
+    );
+
+    // ── Pré-processamento: detecta fundo e binariza ──
+	const imgData = ctxR.getImageData(0, 0, canvasRecorte.width, canvasRecorte.height);
+	const pixels  = imgData.data;
+
+	// Calcula brilho médio para detectar se fundo é escuro ou claro
+	let somaGray = 0;
+	for (let i = 0; i < pixels.length; i += 4) {
+	    somaGray += 0.299 * pixels[i] + 0.587 * pixels[i+1] + 0.114 * pixels[i+2];
+	}
+	const mediaGray = somaGray / (pixels.length / 4);
+	const fundoEscuro = mediaGray < 128; // true = fundo escuro, texto claro
+
+	for (let i = 0; i < pixels.length; i += 4) {
+	    const gray = 0.299 * pixels[i] + 0.587 * pixels[i+1] + 0.114 * pixels[i+2];
+	    // Se fundo escuro: inverte (texto branco → preto para OCR)
+	    // Se fundo claro: normal (texto escuro → preto para OCR)
+	    const bin = fundoEscuro ? (gray > 128 ? 0 : 255) : (gray < 128 ? 0 : 255);
+	    pixels[i] = pixels[i+1] = pixels[i+2] = bin;
+	}
+	ctxR.putImageData(imgData, 0, 0);
+
+    const imageData = canvasRecorte.toDataURL('image/png');
     const { data: { text } } = await worker.recognize(imageData);
 
-    // Extrai códigos no padrão: 2-3 letras maiúsculas + 2 números (ex: BRA01, CC14, FWC08)
-    // Aceita: BRA01, JPN 4, CC 3, FWC08, etc.
-	const regex = /\b([A-Z]{2,3})\s*(\d{1,2})\b/g;
-	const codigos = [];
-	let m;
-	while ((m = regex.exec(text)) !== null) {
-	// Normaliza para formato padrão: sigla + 2 dígitos (ex: JPN4 → JPN04)
-	const codigo = m[1] + m[2].padStart(2, '0');
-	codigos.push(codigo);
-	}
-	const codigosUnicos = [...new Set(codigos)];
-	    if (codigosUnicos.length > 0) {
-	    await validarCodigos(codigosUnicos);
+    // Debug — remova depois que estiver funcionando
+    status.textContent = 'OCR: ' + text.substring(0, 150);
 
-    if (codigos.length > 0) {
-        await validarCodigos(codigos);
+    // Regex aceita BRA01, BRA 01, BRA  1, etc.
+    const regex = /\b([A-Z]{2,3})\s*(\d{1,2})\b/g;
+    const codigos = [];
+    let m;
+    while ((m = regex.exec(text)) !== null) {
+        const codigo = m[1] + m[2].padStart(2, '0');
+        codigos.push(codigo);
+    }
+    const codigosUnicos = [...new Set(codigos)];
+
+    if (codigosUnicos.length > 0) {
+        await validarCodigos(codigosUnicos);
     } else {
         status.textContent = 'Nenhum código detectado. Tente novamente.';
         status.className = 'scanner-status erro';

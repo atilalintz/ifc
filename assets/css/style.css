@@ -569,3 +569,26 @@ main { flex: 1; padding: 2rem 0; }
 }
 .log-wrap h3 { margin-bottom: .75rem; color: var(--verde); }
 .log-wrap p { font-size: .88rem; padding: .2rem 0; }
+.scanner-mira {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.mira-canto {
+    position: absolute;
+    top: 5%;
+    right: 5%;
+    width: 25%;
+    height: 20%;
+    border: 2px solid var(--amarelo);
+    border-radius: 4px;
+}
+.mira-dica {
+    position: absolute;
+    top: 26%;
+    right: 5%;
+    color: var(--amarelo);
+    font-size: .75rem;
+    font-weight: 700;
+    text-shadow: 0 1px 3px rgba(0,0,0,.8);
+}

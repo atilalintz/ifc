@@ -1,0 +1,358 @@
+<!DOCTYPE html><html lang="pt-br"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Scanner Copa</title><script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script><style>
+body{margin:0;padding:15px;background:#111;color:#fff;font-family:Arial;text-align:center}
+.camera-box{position:relative;width:95%;max-width:420px;margin:auto;border-radius:15px;overflow:hidden;border:3px solid #333}
+video{width:100%;display:block}
+.scan-area{position:absolute;top:12%;left:52%;width:38%;height:16%;border:3px solid #00ff00;border-radius:8px;box-shadow:0 0 10px #00ff00}
+#status{margin-top:15px;color:#00ff88;font-size:18px;font-weight:bold}
+#detectado{margin-top:10px;color:gold;font-size:18px}
+.btn{width:95%;max-width:320px;padding:15px;border:none;border-radius:12px;font-size:16px;font-weight:bold;margin-top:10px;cursor:pointer}
+.green{background:#28a745;color:#fff}
+.gray{background:#444;color:#fff}
+#canvasOCR{display:block;width:320px;margin:15px auto;border:2px solid lime}
+canvas{display:none}
+</style></head><body>
+
+<h2>Scanner Figurinhas Copa</h2>
+
+<div class="camera-box">
+<video id="video" autoplay playsinline muted></video>
+<div class="scan-area"></div>
+</div>
+
+<div id="status">Inicializando câmera...</div>
+<div id="detectado">Nenhum código detectado</div>
+
+<input type="file" id="csvInput" accept=".csv"><br>
+
+<button class="btn green" onclick="salvarCSV()">BAIXAR CSV</button>
+<button class="btn gray" onclick="location.reload()">REINICIAR</button>
+
+<canvas id="canvas"></canvas>
+<canvas id="canvasOCR"></canvas>
+
+<script>
+
+const SIGLAS=["ALG","ARG","AUS","AUT","BEL","BRA","CAN","CHI","CHN","COL","CRC","CRO","CZE","ECU","EGY","ENG","ESP","FRA","GER","GHA","GRE","HON","IRN","ITA","IVC","JPN","KOR","KSA","MEX","NED","NGA","NOR","NZL","PAR","PER","POL","POR","RSA","RUS","SCO","SEN","SRB","SUI","TUN","TUR","URU","USA","UZB","FWC","PNN","CC","MAR","QAT","CPV"];
+
+let linhasCSV=[];
+let separador=",";
+let processando=false;
+let ultimoCodigo="";
+let ultimoTempo=0;
+
+const video=document.getElementById('video');
+const canvas=document.getElementById('canvas');
+const ctx=canvas.getContext('2d');
+const canvasOCR=document.getElementById('canvasOCR');
+const ocrCtx=canvasOCR.getContext('2d');
+const status=document.getElementById('status');
+const detectado=document.getElementById('detectado');
+
+async function iniciarCamera(){
+
+    try{
+
+        const stream=await navigator.mediaDevices.getUserMedia({
+            video:{
+                facingMode:"environment",
+                width:{ideal:1920},
+                height:{ideal:1080}
+            }
+        });
+
+        video.srcObject=stream;
+
+        status.innerText="✅ Scanner pronto";
+
+        iniciarLoop();
+
+    }catch(e){
+
+        status.innerText="Erro câmera";
+
+        console.log(e);
+
+    }
+
+}
+
+iniciarCamera();
+
+document.getElementById('csvInput').addEventListener('change',function(e){
+
+    const reader=new FileReader();
+
+    reader.onload=ev=>{
+
+        let conteudo=ev.target.result.replace(/^\uFEFF/,"");
+
+        separador=conteudo.includes(";")?";":",";
+
+        linhasCSV=conteudo.split(/\r?\n/).filter(l=>l.trim()!="");
+
+        status.innerText="CSV carregado";
+
+    };
+
+    reader.readAsText(e.target.files[0],'UTF-8');
+
+});
+
+async function iniciarLoop(){
+
+    while(true){
+
+        if(!processando){
+
+            await processarFrame();
+
+        }
+
+        await new Promise(r=>setTimeout(r,400));
+
+    }
+
+}
+
+async function processarFrame(){
+
+    if(video.readyState !== 4)
+        return;
+
+    if(processando)
+        return;
+
+    processando = true;
+
+    try{
+
+        // CAPTURA FRAME
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        ctx.drawImage(
+            video,
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+        // ÁREA DO CÓDIGO
+        // MAIS PRECISA
+
+        const areaX =
+            canvas.width * 0.54;
+
+        const areaY =
+            canvas.height * 0.10;
+
+        const areaW =
+            canvas.width * 0.34;
+
+        const areaH =
+            canvas.height * 0.14;
+
+        // OCR PEQUENO
+        // MUITO MAIS RÁPIDO
+
+        canvasOCR.width = 320;
+        canvasOCR.height = 110;
+
+        // LIMPA
+
+        ocrCtx.clearRect(
+            0,
+            0,
+            canvasOCR.width,
+            canvasOCR.height
+        );
+
+        // RECORTE + UPSCALE
+
+        ocrCtx.drawImage(
+            canvas,
+            areaX,
+            areaY,
+            areaW,
+            areaH,
+            0,
+            0,
+            canvasOCR.width,
+            canvasOCR.height
+        );
+
+        // OCR
+
+        const result =
+            await worker.recognize(
+                canvasOCR
+            );
+
+        let texto =
+            result.data.text
+            .toUpperCase();
+
+        // LIMPEZA
+
+        texto = texto
+            .replace(/[^A-Z0-9 ]/g,' ')
+            .replace(/\s+/g,' ')
+            .trim();
+
+        console.log(
+            "OCR:",
+            texto
+        );
+
+        // MATCH
+
+        const match =
+            texto.match(
+                /\b([A-Z0-9]{2,3})\s?([A-Z0-9]{1,3})\b/
+            );
+
+        if(match){
+
+            // NORMALIZA
+
+            let dados =
+                normalizarCodigo(
+                    match[1],
+                    match[2]
+                );
+
+            let sigla =
+                dados.sigla;
+
+            let numero =
+                dados.numero;
+
+            // VALIDA NÚMERO
+
+            if(
+                isNaN(numero) ||
+                numero === ""
+            ){
+
+                processando = false;
+                return;
+
+            }
+
+            numero =
+                parseInt(numero,10)
+                .toString()
+                .padStart(2,'0');
+
+            let codigo =
+                sigla + numero;
+
+            console.log(
+                "DETECTADO:",
+                codigo
+            );
+
+            // VALIDA SIGLA
+
+            if(SIGLAS.includes(sigla)){
+
+                const agora =
+                    Date.now();
+
+                // ANTI DUPLICAÇÃO
+
+                if(
+                    codigo !== ultimoCodigo ||
+                    agora - ultimoTempo > 2500
+                ){
+
+                    ultimoCodigo =
+                        codigo;
+
+                    ultimoTempo =
+                        agora;
+
+                    detectado.innerText =
+                        "Detectado: " + codigo;
+
+                    atualizarCSV(codigo);
+
+                }
+
+            }
+
+        }
+
+    }catch(e){
+
+        console.log(
+            "Erro OCR:",
+            e
+        );
+
+    }
+
+    processando = false;
+
+}
+
+function normalizarCodigo(sigla,numero){
+
+    sigla=sigla.replace(/0/g,'O').replace(/1/g,'I').replace(/5/g,'S').replace(/8/g,'B');
+
+    numero=numero.replace(/O/g,'0').replace(/I/g,'1').replace(/S/g,'5').replace(/B/g,'8');
+
+    return{sigla,numero};
+
+}
+
+function atualizarCSV(codigo){
+
+    let achou=false;
+
+    linhasCSV=linhasCSV.map(linha=>{
+
+        let cols=linha.split(separador);
+
+        for(let i=0;i<cols.length;i+=2){
+
+            if(cols[i]&&cols[i].trim().toUpperCase()===codigo){
+
+                cols[i+1]=(parseInt(cols[i+1])||0)+1;
+
+                achou=true;
+
+            }
+
+        }
+
+        return cols.join(separador);
+
+    });
+
+    status.innerText=achou?"✅ "+codigo+" +1":"❌ "+codigo+" não encontrado";
+
+}
+
+function salvarCSV(){
+
+    const blob=new Blob(
+        ["\uFEFF"+linhasCSV.join('\n')],
+        {type:'text/csv'}
+    );
+
+    const a=document.createElement('a');
+
+    a.href=URL.createObjectURL(blob);
+
+    a.download='album_atualizado.csv';
+
+    a.click();
+
+}
+
+</script>
+
+</body></html>
