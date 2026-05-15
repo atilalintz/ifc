@@ -137,8 +137,18 @@ async function capturar() {
     const { data: { text } } = await worker.recognize(imageData);
 
     // Extrai códigos no padrão: 2-3 letras maiúsculas + 2 números (ex: BRA01, CC14, FWC08)
-    const regex  = /\b([A-Z]{2,3}\d{2})\b/g;
-    const codigos = [...new Set(text.match(regex) || [])];
+    // Aceita: BRA01, JPN 4, CC 3, FWC08, etc.
+	const regex = /\b([A-Z]{2,3})\s*(\d{1,2})\b/g;
+	const codigos = [];
+	let m;
+	while ((m = regex.exec(text)) !== null) {
+	// Normaliza para formato padrão: sigla + 2 dígitos (ex: JPN4 → JPN04)
+	const codigo = m[1] + m[2].padStart(2, '0');
+	codigos.push(codigo);
+	}
+	const codigosUnicos = [...new Set(codigos)];
+	    if (codigosUnicos.length > 0) {
+	    await validarCodigos(codigosUnicos);
 
     if (codigos.length > 0) {
         await validarCodigos(codigos);
