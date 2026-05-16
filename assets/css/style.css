@@ -444,8 +444,51 @@ main { flex: 1; padding: 2rem 0; }
     color: var(--azul);
     letter-spacing: .03em;
 }
-.fig-controles { display: flex; align-items: center; gap: .25rem; justify-content: center; }
-.fig-qtd { font-size: .88rem; font-weight: 700; min-width: 16px; text-align: center; }
+.fig-controles {
+    display: flex;
+    align-items: stretch;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid rgba(0,0,0,.15);
+    margin-top: .25rem;
+}
+.fig-metade {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: .3rem 0;
+    cursor: pointer;
+    user-select: none;
+    transition: background .15s;
+}
+.fig-metade-dec { border-right: 1px solid rgba(0,0,0,.15); }
+.fig-sinal {
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1;
+}
+.fig-qtd {
+    font-size: .9rem;
+    font-weight: 800;
+    min-width: 20px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 .2rem;
+}
+
+/* Hover nas metades */
+.figurinha-card:not(.tem):not(.repetida) .fig-metade:hover {
+    background: rgba(0,0,0,.08);
+}
+.figurinha-card.tem .fig-metade:hover {
+    background: rgba(255,255,255,.2);
+}
+.figurinha-card.repetida .fig-metade:hover {
+    background: rgba(0,31,91,.12);
+}
 .btn-inc, .btn-dec {
     width: 20px; height: 20px;
     border: 1px solid var(--borda);
