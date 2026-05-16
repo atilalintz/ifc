@@ -429,6 +429,7 @@ main { flex: 1; padding: 2rem 0; }
     color: var(--azul);
 }
 .figurinha-card.repetida .fig-codigo { color: var(--azul); font-weight: 900; }
+.figurinha-card.repetida .fig-qtd    { color: var(--azul); }
 .figurinha-card.repetida .btn-inc,
 .figurinha-card.repetida .btn-dec    {
     border-color: var(--azul);
