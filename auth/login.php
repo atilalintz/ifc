@@ -5,7 +5,7 @@ require_once __DIR__ . '/../config/session.php';
 
 // Se já logado, redireciona para álbuns
 if (usuarioLogado()) {
-    header('Location: ' . APP_PATH . '/albuns');
+    header('Location: ' . APP_PATH . '/pages/albuns.php');
     exit;
 }
 

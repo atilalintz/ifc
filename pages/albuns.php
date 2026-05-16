@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['nome'])) {
 $stmt = $db->prepare("
     SELECT id, nome, slug_publico, percentual_conclusao,
            total_faltantes, total_repetidas
-    FROM albuns
+    FROM ifc_albuns
     WHERE usuario_id = :uid AND ativo = 1
     ORDER BY criado_em DESC
 ");

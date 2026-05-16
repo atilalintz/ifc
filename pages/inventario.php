@@ -13,32 +13,32 @@ if (!$albumId) { header('Location: /albuns'); exit; }
 
 $stmt = $db->prepare("
     SELECT id, nome, percentual_conclusao, total_faltantes, total_repetidas
-    FROM albuns WHERE id = :id AND usuario_id = :uid AND ativo = 1
+    FROM ifc_albuns WHERE id = :id AND usuario_id = :uid AND ativo = 1
 ");
 $stmt->execute([':id' => $albumId, ':uid' => $usuario['id']]);
 $album = $stmt->fetch();
 if (!$album) { header('Location: /albuns'); exit; }
 
 $stmt = $db->prepare("
-    SELECT
-        g.codigo  AS grupo_codigo,
-        g.nome    AS grupo_nome,
-        g.ordem   AS grupo_ordem,
-        s.id      AS selecao_id,
-        s.sigla   AS selecao_sigla,
-        s.nome    AS selecao_nome,
-        s.bandeira_url,
-        f.id      AS figurinha_id,
-        f.codigo  AS figurinha_codigo,
-        f.numero,
-        f.tipo,
-        COALESCE(i.quantidade, 0) AS quantidade
-    FROM figurinhas f
-    JOIN selecoes s ON s.id = f.selecao_id
-    LEFT JOIN grupos g ON g.id = s.grupo_id
-    LEFT JOIN inventario_usuario i
-        ON i.figurinha_id = f.id AND i.album_id = :aid
-    ORDER BY COALESCE(g.ordem, -1), s.sigla, f.numero
+ SELECT
+ g.codigo AS grupo_codigo,
+ g.nome AS grupo_nome,
+ g.ordem AS grupo_ordem,
+ s.id AS selecao_id,
+ s.sigla AS selecao_sigla,
+ s.nome AS selecao_nome,
+ s.bandeira_url,
+ f.id AS figurinha_id,
+ f.codigo AS figurinha_codigo,
+ f.numero,
+ f.tipo,
+ COALESCE(i.quantidade, 0) AS quantidade
+ FROM " . tbl('figurinhas') . " f
+ JOIN " . tbl('selecoes') . " s ON s.id = f.selecao_id
+ LEFT JOIN " . tbl('grupos') . " g ON g.id = s.grupo_id
+ LEFT JOIN " . tbl('inventario') . " i
+ ON i.figurinha_id = f.id AND i.album_id = :aid
+ ORDER BY COALESCE(g.ordem, -1), s.sigla, f.numero
 ");
 $stmt->execute([':aid' => $albumId]);
 $rows = $stmt->fetchAll();

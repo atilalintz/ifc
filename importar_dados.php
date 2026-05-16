@@ -129,7 +129,7 @@ $figurinhasPorSelecao = [
 $db = getDB();
 
 // Busca IDs dos grupos
-$stmt   = $db->query("SELECT id, codigo FROM grupos");
+$stmt   = $db->query("SELECT id, codigo FROM ifc_grupos");
 $grupos = [];
 foreach ($stmt->fetchAll() as $row) {
     $grupos[$row['codigo']] = $row['id'];
@@ -147,23 +147,23 @@ echo "===========================================\n\n";
 // 4. Insere seleções e figurinhas na ordem do álbum
 // ─────────────────────────────────────────────
 $stmtSelecao = $db->prepare("
-    INSERT IGNORE INTO selecoes (id, grupo_id, nome, sigla, bandeira_url)
+    INSERT IGNORE INTO ifc_selecoes (id, grupo_id, nome, sigla, bandeira_url)
     VALUES (:id, :grupo_id, :nome, :sigla, :bandeira_url)
 ");
 
 $stmtFigurinhas = $db->prepare("
-    INSERT IGNORE INTO figurinhas (id, codigo, selecao_id, numero, tipo)
+    INSERT IGNORE INTO ifc_figurinhas (id, codigo, selecao_id, numero, tipo)
     VALUES (:id, :codigo, :selecao_id, :numero, :tipo)
 ");
 
-$stmtBuscaSelecao = $db->prepare("SELECT id FROM selecoes WHERE sigla = :sigla");
+$stmtBuscaSelecao = $db->prepare("SELECT id FROM ifc_selecoes WHERE sigla = :sigla");
 
 foreach ($ordemAlbum as [$grupoCode, $sigla, $nome]) {
 
     // ── Insere seleção ──
     $grupoId  = $grupoCode ? ($grupos[$grupoCode] ?? null) : null;
-    $bandeira = "/assets/img/selecoes/{$sigla}.png";
-
+    $baseUrl = '/ifc';
+    $bandeira = $baseUrl . "/assets/img/selecoes/{$sigla}.png";
     $stmtSelecao->execute([
         ':id'           => uuid(),
         ':grupo_id'     => $grupoId,
