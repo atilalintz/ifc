@@ -114,14 +114,18 @@ layoutInicio('Inventário — ' . $album['nome']);
 <!-- Filtros -->
 <div class="filtros-sticky">
     <div class="filtros-barra">
-        <input type="text" id="busca" placeholder="Buscar código ou país...">
-        <select id="filtro-status">
-            <option value="">Todas</option>
-            <option value="faltante">Faltantes</option>
-            <option value="tenho">Tenho (≥1)</option>
-            <option value="repetida">Repetidas (≥2)</option>
-        </select>
-    </div>
+    <input type="text" id="busca" placeholder="Buscar código ou país...">
+    <select id="filtro-status">
+        <option value="">Todas</option>
+        <option value="faltante">Faltantes</option>
+        <option value="tenho">Tenho (≥1)</option>
+        <option value="repetida">Repetidas (≥2)</option>
+    </select>
+    <label class="checkbox-label">
+        <input type="checkbox" id="mostrar-completas">
+        Mostrar completas
+    </label>
+</div>
     <!-- Pílulas de grupo -->
     <div class="grupos-pilulas">
         <button class="pilula ativa" data-grupo="" onclick="filtrarGrupo(this)">Todos</button>
@@ -224,6 +228,7 @@ function filtrarGrupo(btn) {
 function aplicarFiltros() {
     const busca  = document.getElementById('busca').value.toLowerCase().trim();
     const status = document.getElementById('filtro-status').value;
+    const mostrarCompletas = document.getElementById('mostrar-completas').checked;
     const grupo  = document.querySelector('.pilula.ativa').dataset.grupo;
 
     document.querySelectorAll('.selecao-row').forEach(row => {
@@ -233,6 +238,13 @@ function aplicarFiltros() {
 
         // Filtro grupo
         if (grupo && rowGrupo !== grupo) { row.style.display = 'none'; return; }
+        
+        // Oculta seleções completas por padrão
+	if (!mostrarCompletas) {
+	    const cards = [...row.querySelectorAll('.figurinha-card')];
+	    const temFaltante = cards.some(c => parseInt(c.dataset.qtd) === 0);
+	    if (!temFaltante) { row.style.display = 'none'; return; }
+	}
 
         // Filtro busca por nome ou sigla
         if (busca && !rowNome.includes(busca) && !rowSigla.includes(busca)) {
@@ -260,7 +272,7 @@ function aplicarFiltros() {
 
 document.getElementById('busca').addEventListener('input', aplicarFiltros);
 document.getElementById('filtro-status').addEventListener('change', aplicarFiltros);
-
+document.getElementById('mostrar-completas').addEventListener('change', aplicarFiltros);
 // ── API ─────────────────────────────────────
 async function atualizar(figurinhaId, albumId, acao) {
     const resp = await fetch('/api/inventario', {

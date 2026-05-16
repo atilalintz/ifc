@@ -7,7 +7,7 @@ $usuario = usuarioLogado();
 $db      = getDB();
 
 $stmt = $db->prepare("
-    SELECT id, nome FROM albuns
+    SELECT id, nome FROM ifc_albuns
     WHERE usuario_id = :uid AND ativo = 1
     ORDER BY criado_em DESC
 ");
@@ -122,8 +122,14 @@ async function iniciarTesseract() {
         }
     });
     await worker.setParameters({
+        // Permite apenas letras maiúsculas, números e espaço
         tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
-        tessedit_pageseg_mode: '7', // trata como linha única de texto
+        // Trata o recorte estritamente como uma única linha de texto uniforme
+        tessedit_pageseg_mode: '7', 
+        // Desativa a detecção de estilos de fonte (ajuda a ignorar falsos negritos)
+        textord_disable_font_properties: '1',
+        // Força o OCR a assumir que o espaçamento entre letras e números é fixo
+        assume_fixed_pitch_拍攝: '1'
     });
     await iniciarCamera();
 }
@@ -167,29 +173,32 @@ async function capturar() {
 
     const { data: { text } } = await worker.recognize(imageData);
     
-    // TRATAMENTO DO TEXTO: O OCR costuma trocar 'O' por '0' em siglas como POR
-    let textoTratado = text.toUpperCase()
-        .replace(/0/g, 'O') // Troca zero por O nas letras
-        .replace(/[^A-Z0-9]/g, ' ');
+    let textoOriginal = text.toUpperCase().replace(/[^A-Z0-9]/g, ' ');
+
+    // 1. Criamos um texto específico para validar as siglas (onde 0 vira O)
+    let textoParaSiglas = textoOriginal.replace(/0/g, 'O');
 
     const siglasPattern = siglas.join('|');
-    // Regex que aceita Sigla + Espaço opcional + Números
-    const regex = new RegExp(`(${siglasPattern})\\s*(\\d{1,2})`, 'g');
+    // Regex ajustada: captura a sigla (no texto com O) e captura os números (no texto original)
+    const regex = new RegExp(`(${siglasPattern})\\s*([A-Z0-9]{1,3})`, 'g');
     
     const encontrados = [];
     let m;
-    while ((m = regex.exec(textoTratado)) !== null) {
+    while ((m = regex.exec(textoParaSiglas)) !== null) {
         let sigla = m[1];
-        // Recupera o número original (que a troca de 0 por O acima pode ter afetado)
-        // Por isso pegamos apenas a parte numérica do match original
-        let numMatch = m[0].match(/\d+/);
+        let indiceMatch = m.index;
+        
+        // Pegamos o pedaço correspondente direto do texto original (mantendo o número 20 intacto)
+        let pedacoOriginal = textoOriginal.substring(indiceMatch, regex.lastIndex);
+        let numMatch = pedacoOriginal.match(/\d+/);
+        
         if (numMatch) {
             let num = numMatch[0].padStart(2, '0');
             encontrados.push(sigla + num);
         }
     }
 
-    status.textContent = 'Lido: ' + (textoTratado.trim() || 'vazio');
+    status.textContent = 'Lido: ' + (textoOriginal.trim() || 'vazio');
 
     if (encontrados.length > 0) {
         const únicos = [...new Set(encontrados)];
@@ -201,7 +210,7 @@ async function capturar() {
 }
 async function validarCodigos(codigos) {
     const albumId = document.getElementById('scanner-album').value;
-    const urlApi = '/api/scanner'; 
+    const urlApi = '../api/scanner.php';
 
     try {
         const respValidar = await fetch(urlApi, {
@@ -275,9 +284,11 @@ async function confirmarTodas() {
     if (itens.length === 0) return;
 
     status.textContent = 'Gravando lote...';
+    
+    const urlApi = '../api/scanner.php';
 
     try {
-        const resp = await fetch('/api/scanner', {
+	const resp = await fetch(urlApi, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: 'confirmar=1&itens=' + encodeURIComponent(JSON.stringify(itens)) + '&album_id=' + albumId

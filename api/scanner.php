@@ -1,10 +1,10 @@
 <?php
+// api/scanner.php — Valida códigos e confirma figurinhas detectadas
 header('Content-Type: application/json');
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+header("Access-Control-Allow-Headers: Content-Type");
 
-// Responde ao navegador que a rota é segura antes mesmo de validar login
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     http_response_code(200);
     exit;
@@ -18,8 +18,8 @@ $usuario = usuarioLogado();
 $db      = getDB();
 $albumId = $_POST['album_id'] ?? '';
 
-// Valida álbum
-$stmt = $db->prepare("SELECT id FROM albuns WHERE id = :id AND usuario_id = :uid");
+// CORREÇÃO: ifc_albuns
+$stmt = $db->prepare("SELECT id FROM ifc_albuns WHERE id = :id AND usuario_id = :uid");
 $stmt->execute([':id' => $albumId, ':uid' => $usuario['id']]);
 if (!$stmt->fetch()) {
     http_response_code(403);
@@ -38,10 +38,11 @@ if (!empty($_POST['codigos'])) {
     }
 
     $validos = [];
+    // CORREÇÃO: ifc_figurinhas e ifc_selecoes
     $stmt = $db->prepare("
         SELECT f.id, f.codigo, s.nome AS selecao_nome
-        FROM figurinhas f
-        JOIN selecoes s ON s.id = f.selecao_id
+        FROM ifc_figurinhas f
+        JOIN ifc_selecoes s ON s.id = f.selecao_id
         WHERE f.codigo = :codigo
     ");
 
@@ -71,18 +72,25 @@ if (!empty($_POST['confirmar']) && !empty($_POST['itens'])) {
         exit;
     }
 
+    // CORREÇÃO: ifc_inventario
     $stmtVerifica = $db->prepare("
-        SELECT id, quantidade FROM inventario_usuario
+        SELECT id, quantidade FROM ifc_inventario
         WHERE album_id = :aid AND figurinha_id = :fid
     ");
+    
+    // CORREÇÃO: ifc_inventario
     $stmtInsert = $db->prepare("
-        INSERT INTO inventario_usuario (id, album_id, usuario_id, figurinha_id, quantidade)
+        INSERT INTO ifc_inventario (id, album_id, usuario_id, figurinha_id, quantidade)
         VALUES (UUID(), :aid, :uid, :fid, :qtd)
     ");
+    
+    // CORREÇÃO: ifc_inventario
     $stmtUpdate = $db->prepare("
-        UPDATE inventario_usuario SET quantidade = quantidade + :qtd WHERE id = :id
+        UPDATE ifc_inventario SET quantidade = quantidade + :qtd WHERE id = :id
     ");
-    $stmtFig = $db->prepare("SELECT id FROM figurinhas WHERE codigo = :codigo");
+    
+    // CORREÇÃO: ifc_figurinhas
+    $stmtFig = $db->prepare("SELECT id FROM ifc_figurinhas WHERE codigo = :codigo");
 
     foreach ($itens as $item) {
         $stmtFig->execute([':codigo' => $item['codigo']]);
@@ -107,12 +115,14 @@ if (!empty($_POST['confirmar']) && !empty($_POST['itens'])) {
     }
 
     // Recalcula estatísticas
-    $stmtTotal = $db->prepare("SELECT COUNT(*) FROM figurinhas");
+    // CORREÇÃO: ifc_figurinhas
+    $stmtTotal = $db->prepare("SELECT COUNT(*) FROM ifc_figurinhas");
     $stmtTotal->execute();
     $totalFigurinhas = (int) $stmtTotal->fetchColumn();
 
+    // CORREÇÃO: ifc_inventario
     $stmtTem = $db->prepare("
-        SELECT COUNT(*) FROM inventario_usuario
+        SELECT COUNT(*) FROM ifc_inventario
         WHERE album_id = :aid AND quantidade > 0
     ");
     $stmtTem->execute([':aid' => $albumId]);
@@ -121,15 +131,17 @@ if (!empty($_POST['confirmar']) && !empty($_POST['itens'])) {
     $percentual = $totalFigurinhas > 0 ? round(($totalTem / $totalFigurinhas) * 100, 2) : 0;
     $faltantes  = $totalFigurinhas - $totalTem;
 
+    // CORREÇÃO: ifc_inventario
     $stmtRep = $db->prepare("
         SELECT COALESCE(SUM(GREATEST(quantidade - 1, 0)), 0)
-        FROM inventario_usuario WHERE album_id = :aid
+        FROM ifc_inventario WHERE album_id = :aid
     ");
     $stmtRep->execute([':aid' => $albumId]);
     $totalRep = (int) $stmtRep->fetchColumn();
 
+    // CORREÇÃO: ifc_albuns
     $db->prepare("
-        UPDATE albuns SET
+        UPDATE ifc_albuns SET
             percentual_conclusao = :pct,
             total_faltantes      = :falt,
             total_repetidas      = :rep
@@ -141,3 +153,4 @@ if (!empty($_POST['confirmar']) && !empty($_POST['itens'])) {
 }
 
 echo json_encode(['erro' => 'Ação inválida']);
+exit;

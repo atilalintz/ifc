@@ -25,8 +25,8 @@ if (!$albumId || !$figurinhaId || !in_array($acao, ['incrementar', 'decrementar'
     exit;
 }
 
-// Verifica se o álbum pertence ao usuário
-$stmt = $db->prepare("SELECT id FROM albuns WHERE id = :id AND usuario_id = :uid");
+// CORREÇÃO: ifc_albuns
+$stmt = $db->prepare("SELECT id FROM ifc_albuns WHERE id = :id AND usuario_id = :uid");
 $stmt->execute([':id' => $albumId, ':uid' => $usuario['id']]);
 if (!$stmt->fetch()) {
     http_response_code(403);
@@ -34,9 +34,9 @@ if (!$stmt->fetch()) {
     exit;
 }
 
-// Busca quantidade atual
+// CORREÇÃO: ifc_inventario
 $stmt = $db->prepare("
-    SELECT id, quantidade FROM inventario_usuario
+    SELECT id, quantidade FROM ifc_inventario
     WHERE album_id = :aid AND figurinha_id = :fid
 ");
 $stmt->execute([':aid' => $albumId, ':fid' => $figurinhaId]);
@@ -44,14 +44,16 @@ $registro = $stmt->fetch();
 
 if ($acao === 'incrementar') {
     if ($registro) {
+        // CORREÇÃO: ifc_inventario
         $db->prepare("
-            UPDATE inventario_usuario SET quantidade = quantidade + 1
+            UPDATE ifc_inventario SET quantidade = quantidade + 1
             WHERE id = :id
         ")->execute([':id' => $registro['id']]);
         $novaQtd = $registro['quantidade'] + 1;
     } else {
+        // CORREÇÃO: ifc_inventario
         $db->prepare("
-            INSERT INTO inventario_usuario (id, album_id, usuario_id, figurinha_id, quantidade)
+            INSERT INTO ifc_inventario (id, album_id, usuario_id, figurinha_id, quantidade)
             VALUES (UUID(), :aid, :uid, :fid, 1)
         ")->execute([':aid' => $albumId, ':uid' => $usuario['id'], ':fid' => $figurinhaId]);
         $novaQtd = 1;
@@ -59,27 +61,31 @@ if ($acao === 'incrementar') {
 } else { // decrementar
     $novaQtd = max(0, ($registro['quantidade'] ?? 0) - 1);
     if ($registro) {
+        // CORREÇÃO: ifc_inventario
         $db->prepare("
-            UPDATE inventario_usuario SET quantidade = :qtd WHERE id = :id
+            UPDATE ifc_inventario SET quantidade = :qtd WHERE id = :id
         ")->execute([':qtd' => $novaQtd, ':id' => $registro['id']]);
     }
 }
 
 // Recalcula estatísticas do álbum
-$stmt = $db->prepare("SELECT COUNT(*) FROM figurinhas");
+// CORREÇÃO: ifc_figurinhas
+$stmt = $db->prepare("SELECT COUNT(*) FROM ifc_figurinhas");
 $stmt->execute();
 $totalFigurinhas = (int) $stmt->fetchColumn();
 
+// CORREÇÃO: ifc_inventario
 $stmt = $db->prepare("
-    SELECT COUNT(*) FROM inventario_usuario
+    SELECT COUNT(*) FROM ifc_inventario
     WHERE album_id = :aid AND quantidade > 0
 ");
 $stmt->execute([':aid' => $albumId]);
 $totalTem = (int) $stmt->fetchColumn();
 
+// CORREÇÃO: ifc_inventario
 $stmt = $db->prepare("
     SELECT COALESCE(SUM(GREATEST(quantidade - 1, 0)), 0)
-    FROM inventario_usuario WHERE album_id = :aid
+    FROM ifc_inventario WHERE album_id = :aid
 ");
 $stmt->execute([':aid' => $albumId]);
 $totalRepetidas = (int) $stmt->fetchColumn();
@@ -87,8 +93,9 @@ $totalRepetidas = (int) $stmt->fetchColumn();
 $percentual  = $totalFigurinhas > 0 ? round(($totalTem / $totalFigurinhas) * 100, 2) : 0;
 $totalFaltam = $totalFigurinhas - $totalTem;
 
+// CORREÇÃO: ifc_albuns
 $db->prepare("
-    UPDATE albuns SET
+    UPDATE ifc_albuns SET
         percentual_conclusao = :pct,
         total_faltantes      = :falt,
         total_repetidas      = :rep
@@ -106,3 +113,4 @@ echo json_encode([
     'faltantes'   => $totalFaltam,
     'repetidas'   => $totalRepetidas,
 ]);
+exit;

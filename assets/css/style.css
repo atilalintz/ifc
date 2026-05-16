@@ -43,17 +43,37 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    flex-wrap: wrap;
-    gap: .5rem;
+    flex-wrap: nowrap; /* CORREÇÃO: Impede a quebra de linha */
+    gap: 1rem;
 }
-.logo { color: var(--amarelo); font-weight: 700; font-size: 1.25rem; text-decoration: none; }
+.logo { 
+    color: var(--amarelo); 
+    font-weight: 700; 
+    font-size: 1.25rem; 
+    text-decoration: none; 
+    white-space: nowrap; /* Impede o nome do sistema de quebrar */
+}
+.header nav {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem; /* Controla o espaçamento entre os links, foto e botão */
+}
 .header nav a {
     color: #fff;
     text-decoration: none;
-    margin-left: 1.25rem;
     font-size: .95rem;
+    white-space: nowrap; /* Impede os textos dos links de quebrarem */
 }
 .header nav a:hover { color: var(--amarelo); }
+
+/* Ajuste para a Foto do Google (Prevenção) */
+.header nav img {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--amarelo);
+}
 
 /* Main */
 main { flex: 1; padding: 2rem 0; }
@@ -242,7 +262,17 @@ main { flex: 1; padding: 2rem 0; }
 }
 .pilula:hover { background: var(--azul); color: #fff; }
 .pilula.ativa  { background: var(--verde); color: #fff; border-color: var(--verde); }
-
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .88rem;
+    font-weight: 600;
+    color: var(--azul);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.checkbox-label input { cursor: pointer; }
 /* ================================
    Linhas de seleção
    ================================ */
@@ -373,15 +403,38 @@ main { flex: 1; padding: 2rem 0; }
     }
 }
 .figurinha-card {
-    background: #f7f7f7;
-    border: 2px solid #bbb;
+    background: #f0f0f0;
+    border: 2px solid #999;
     border-radius: var(--radius);
-    padding: .3rem .3rem;
+    padding: .3rem .4rem;
     text-align: center;
     transition: border-color .15s, background .15s;
 }
-.figurinha-card.tem      { border-color: var(--verde); background: #e8f5ee; }
-.figurinha-card.repetida { border-color: var(--amarelo); background: #fffbe6; }
+.figurinha-card.tem {
+    border-color: var(--verde);
+    background: var(--verde);
+    color: #fff;
+}
+.figurinha-card.tem .fig-codigo { color: #fff; }
+.figurinha-card.tem .fig-qtd    { color: #fff; }
+.figurinha-card.tem .btn-inc,
+.figurinha-card.tem .btn-dec    {
+    border-color: rgba(255,255,255,.5);
+    background: rgba(255,255,255,.2);
+    color: #fff;
+}
+.figurinha-card.repetida {
+    border-color: #c49000;
+    background: var(--amarelo);
+    color: var(--azul);
+}
+.figurinha-card.repetida .fig-codigo { color: var(--azul); font-weight: 900; }
+.figurinha-card.repetida .btn-inc,
+.figurinha-card.repetida .btn-dec    {
+    border-color: var(--azul);
+    background: rgba(0,31,91,.15);
+    color: var(--azul);
+}
 .fig-codigo {
     font-size: .85rem;
     font-weight: 800;
@@ -591,13 +644,23 @@ main { flex: 1; padding: 2rem 0; }
 }
 .mira-canto {
     position:absolute;
+    left:44%;
+    top:40%;
+    width:18%;
+    height:16%;
+    border: 3px solid var(--amarelo);
+    border-radius: 20px 20px 0px 20px;
+}
+/*.mira-canto {
+    position:absolute;
     left:38%;
     top:33%;
     width:28%;
     height:25%;
     border: 3px solid var(--amarelo);
     border-radius: 20px 20px 0px 20px;
-}
+}*/
+
 .mira-dica {
     position: absolute;
     top: 65%;
