@@ -607,3 +607,54 @@ main { flex: 1; padding: 2rem 0; }
     font-weight: 700;
     text-shadow: 0 1px 3px rgba(0,0,0,.8);
 }
+/* ================================
+   Header — usuário logado
+   ================================ */
+.header-usuario {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-left: auto;
+}
+.avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid var(--amarelo);
+    object-fit: cover;
+}
+.avatar-inicial {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--amarelo);
+    color: var(--azul);
+    font-weight: 700;
+    font-size: .9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.usuario-nome {
+    color: #fff;
+    font-size: .88rem;
+    font-weight: 600;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.btn-logout {
+    color: #fff;
+    font-size: 1.1rem;
+    text-decoration: none;
+    opacity: .7;
+    transition: opacity .2s;
+    margin-left: .25rem;
+}
+.btn-logout:hover { opacity: 1; color: var(--amarelo); }
+
+@media (max-width: 480px) {
+    .usuario-nome { display: none; }
+}
