@@ -559,7 +559,22 @@ main { flex: 1; padding: 2rem 0; }
 }
 .det-remover { color: #c0392b !important; border-color: #c0392b !important; }
 .resultado-acoes { display: flex; gap: .6rem; }
+#debug-recorte {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
 
+#img-recorte {
+    /* Mantém o tamanho visual próximo ao da mira na tela */
+    width: 200px; 
+    height: 80px; 
+    border: 2px solid var(--amarelo);
+    border-radius: 4px;
+    object-fit: contain;
+    background: #000;
+}
 /* Log */
 .log-wrap {
     background: #fff;
@@ -575,20 +590,20 @@ main { flex: 1; padding: 2rem 0; }
     pointer-events: none;
 }
 .mira-canto {
-    position: absolute;
-    top: 5%;
-    right: 5%;
-    width: 25%;
-    height: 20%;
-    border: 2px solid var(--amarelo);
-    border-radius: 4px;
+    position:absolute;
+    left:38%;
+    top:33%;
+    width:28%;
+    height:25%;
+    border: 3px solid var(--amarelo);
+    border-radius: 20px 20px 0px 20px;
 }
 .mira-dica {
     position: absolute;
-    top: 26%;
-    right: 5%;
+    top: 65%;
+    left: 10%;
     color: var(--amarelo);
-    font-size: .75rem;
+    font-size: .85rem;
     font-weight: 700;
     text-shadow: 0 1px 3px rgba(0,0,0,.8);
 }

@@ -1,9 +1,17 @@
 <?php
-// api/scanner.php — Valida códigos e confirma figurinhas detectadas
+header('Content-Type: application/json');
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+
+// Responde ao navegador que a rota é segura antes mesmo de validar login
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/session.php';
-
-header('Content-Type: application/json');
 requireLogin();
 
 $usuario = usuarioLogado();
@@ -133,12 +141,3 @@ if (!empty($_POST['confirmar']) && !empty($_POST['itens'])) {
 }
 
 echo json_encode(['erro' => 'Ação inválida']);
-
-Registra a rota no index.php:
-php
-
-$apis = [
-    'api/inventario' => 'api/inventario.php',
-    'api/csv'        => 'api/csv.php',
-    'api/scanner'    => 'api/scanner.php',
-];
