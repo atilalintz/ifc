@@ -451,32 +451,36 @@ main { flex: 1; padding: 2rem 0; }
     overflow: hidden;
     border: 1px solid rgba(0,0,0,.15);
     margin-top: .25rem;
+    height: 28px;
 }
 .fig-metade {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: .3rem 0;
     cursor: pointer;
     user-select: none;
     transition: background .15s;
+    min-width: 0;
 }
 .fig-metade-dec { border-right: 1px solid rgba(0,0,0,.15); }
 .fig-sinal {
-    font-size: 1rem;
+    font-size: .95rem;
     font-weight: 700;
     line-height: 1;
 }
 .fig-qtd {
-    font-size: .9rem;
+    font-size: .85rem;
     font-weight: 800;
-    min-width: 20px;
+    width: 22px;
+    min-width: 22px;
     text-align: center;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0 .2rem;
+    flex-shrink: 0;
+    border-left: 1px solid rgba(0,0,0,.15);
+    border-right: 1px solid rgba(0,0,0,.15);
 }
 
 /* Hover nas metades */
@@ -764,4 +768,16 @@ main { flex: 1; padding: 2rem 0; }
 
 @media (max-width: 480px) {
     .usuario-nome { display: none; }
+}
+.form-herdar {
+    margin-top: .75rem;
+}
+.form-herdar select {
+    width: 100%;
+    padding: .5rem .75rem;
+    border: 2px solid var(--azul);
+    border-radius: var(--radius);
+    font-size: .9rem;
+    background: #eef1f8;
+    color: var(--azul);
 }

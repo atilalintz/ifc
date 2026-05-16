@@ -176,18 +176,24 @@ layoutInicio('Inventário — ' . $album['nome']);
                 <div class="figurinhas-grid">
                     <?php foreach ($selecao['figurinhas'] as $fig): ?>
                         <div class="figurinha-card <?= $fig['qtd'] > 0 ? 'tem' : '' ?> <?= $fig['qtd'] > 1 ? 'repetida' : '' ?>"
-                             id="fig-<?= $fig['id'] ?>"
-                             data-codigo="<?= htmlspecialchars($fig['codigo']) ?>"
-                             data-qtd="<?= $fig['qtd'] ?>"
-                             data-selecao="<?= $selecao['id'] ?>"
-                             data-total="<?= $selecao['total'] ?>">
-                            <span class="fig-codigo"><?= htmlspecialchars($fig['codigo']) ?></span>
-                            <div class="fig-controles">
-                                <button class="btn-dec" onclick="atualizar('<?= $fig['id'] ?>', '<?= $albumId ?>', 'decrementar')">−</button>
-                                <span class="fig-qtd" id="qtd-<?= $fig['id'] ?>"><?= $fig['qtd'] ?></span>
-                                <button class="btn-inc" onclick="atualizar('<?= $fig['id'] ?>', '<?= $albumId ?>', 'incrementar')">+</button>
-                            </div>
-                        </div>
+			     id="fig-<?= $fig['id'] ?>"
+			     data-codigo="<?= htmlspecialchars($fig['codigo']) ?>"
+			     data-qtd="<?= $fig['qtd'] ?>"
+			     data-selecao="<?= $selecao['id'] ?>"
+			     data-total="<?= $selecao['total'] ?>">
+			    <span class="fig-codigo"><?= htmlspecialchars($fig['codigo']) ?></span>
+			    <div class="fig-controles">
+				<div class="fig-metade fig-metade-dec"
+				     onclick="atualizar('<?= $fig['id'] ?>', '<?= $albumId ?>', 'decrementar')">
+				    <span class="fig-sinal">−</span>
+				</div>
+				<div class="fig-qtd" id="qtd-<?= $fig['id'] ?>"><?= $fig['qtd'] ?></div>
+				<div class="fig-metade fig-metade-inc"
+				     onclick="atualizar('<?= $fig['id'] ?>', '<?= $albumId ?>', 'incrementar')">
+				    <span class="fig-sinal">+</span>
+				</div>
+			    </div>
+			</div>
                     <?php endforeach; ?>
                 </div>
             </div>
