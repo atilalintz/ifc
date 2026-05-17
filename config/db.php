@@ -14,7 +14,7 @@ if ($isLocal) {
     define('DB_HOST', 'localhost');
     define('DB_NAME', 'u450461275_quiz_db');
     define('DB_USER', 'u450461275_contato');
-    define('DB_PASS', 'L9!nQ2I?NU@x'); // ← trocar
+    define('DB_PASS', 'Minha senha do Hostinger'); // ← trocar
     define('TBL', 'ifc_'); // prefixo das tabelas
 }
 
