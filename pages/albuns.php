@@ -121,7 +121,7 @@ layoutInicio('Meus Álbuns');
 		<input type="checkbox" id="chk-herdar" onchange="toggleHerdar(this)">
 		Herdar repetidas de outros álbuns
 	    </label>
-	    <div id="lista-origens" style="display:none;margin-top:.75rem;">
+	    <div id="lista-origens" class="lista-origens" style="display:none;">
 		<?php foreach ($albuns as $a): ?>
 		    <?php if ($a['total_repetidas'] > 0): ?>
 		        <label class="checkbox-label" style="margin-bottom:.4rem">

@@ -184,12 +184,12 @@ layoutInicio('Inventário — ' . $album['nome']);
 			    <span class="fig-codigo"><?= htmlspecialchars($fig['codigo']) ?></span>
 			    <div class="fig-controles">
 				<div class="fig-metade fig-metade-dec"
-				     onclick="atualizar('<?= $fig['id'] ?>', '<?= $albumId ?>', 'decrementar')">
+				     onclick="event.stopPropagation(); atualizar('<?= $fig['id'] ?>', '<?= $albumId ?>', 'decrementar')">
 				    <span class="fig-sinal">−</span>
 				</div>
 				<div class="fig-qtd" id="qtd-<?= $fig['id'] ?>"><?= $fig['qtd'] ?></div>
 				<div class="fig-metade fig-metade-inc"
-				     onclick="atualizar('<?= $fig['id'] ?>', '<?= $albumId ?>', 'incrementar')">
+				     onclick="event.stopPropagation(); atualizar('<?= $fig['id'] ?>', '<?= $albumId ?>', 'incrementar')">
 				    <span class="fig-sinal">+</span>
 				</div>
 			    </div>
