@@ -32,7 +32,8 @@ $stmt = $db->prepare("
  f.codigo AS figurinha_codigo,
  f.numero,
  f.tipo,
- COALESCE(i.quantidade, 0) AS quantidade
+ COALESCE(i.quantidade, 0) AS quantidade,
+ COALESCE(i.quantidade_bloqueada, 0) AS reservada
  FROM " . tbl('figurinhas') . " f
  JOIN " . tbl('selecoes') . " s ON s.id = f.selecao_id
  LEFT JOIN " . tbl('grupos') . " g ON g.id = s.grupo_id
@@ -68,6 +69,7 @@ foreach ($rows as $row) {
         'numero' => $row['numero'],
         'tipo'   => $row['tipo'],
         'qtd'    => (int) $row['quantidade'],
+        'reservada' => (int) $row['reservada'],
     ];
     $estrutura[$gKey]['selecoes'][$sKey]['total']++;
     if ((int)$row['quantidade'] > 0) {
@@ -175,12 +177,14 @@ layoutInicio('Inventário — ' . $album['nome']);
             <div class="selecao-figurinhas">
                 <div class="figurinhas-grid">
                     <?php foreach ($selecao['figurinhas'] as $fig): ?>
-                        <div class="figurinha-card <?= $fig['qtd'] > 0 ? 'tem' : '' ?> <?= $fig['qtd'] > 1 ? 'repetida' : '' ?>"
-			     id="fig-<?= $fig['id'] ?>"
-			     data-codigo="<?= htmlspecialchars($fig['codigo']) ?>"
-			     data-qtd="<?= $fig['qtd'] ?>"
-			     data-selecao="<?= $selecao['id'] ?>"
-			     data-total="<?= $selecao['total'] ?>">
+			    <div
+				class="figurinha-card <?= $fig['qtd'] > 0 ? 'tem' : '' ?> <?= $fig['qtd'] > 1 ? 'repetida' : '' ?> <?= $fig['reservada'] > 0 ? 'selecionada' : '' ?>"
+				id="fig-<?= $fig['id'] ?>"
+				data-codigo="<?= htmlspecialchars($fig['codigo']) ?>"
+				data-qtd="<?= $fig['qtd'] ?>"
+				data-selecao="<?= $selecao['id'] ?>"
+				data-total="<?= $selecao['total'] ?>"
+			    >
 			    <span class="fig-codigo"><?= htmlspecialchars($fig['codigo']) ?></span>
 			    <div class="fig-controles">
 				<div class="fig-metade fig-metade-dec"
@@ -380,6 +384,107 @@ document.addEventListener('click', function(e) {
     if (!e.target.closest('.dropdown')) {
         document.getElementById('dropdown-menu').classList.remove('aberto');
     }
+});
+// ─────────────────────────────────────
+// Reservar figurinhas (Sincronizado com Banco de Dados)
+// ─────────────────────────────────────
+let modoSelecao = document.querySelectorAll('.figurinha-card.selecionada').length > 0;
+const travasDeClique = new Map(); 
+
+// Envia o estado de reserva em tempo real para o banco de dados
+async function atualizarReservaNoBanco(figurinhaId, reservar) {
+    const albumId = '<?= $albumId ?>';
+    const acao = reservar ? 'reservar' : 'desreservar';
+    
+    try {
+        await fetch('/api/inventario', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `figurinha_id=${figurinhaId}&album_id=${albumId}&acao=${acao}`
+        });
+    } catch (erro) {
+        console.error('Erro ao salvar reserva no servidor:', erro);
+    }
+}
+
+// CONFIGURAR OS CARDS
+document.querySelectorAll('.figurinha-card').forEach(card => {
+    let pressTimer = null;
+    let tempoInicioToque = 0;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let moveuDistancia = false;
+
+    function alternarReserva() {
+        const agora = Date.now();
+        const ultimoClique = travasDeClique.get(card.id) || 0;
+
+        if (agora - ultimoClique < 500) return;
+        travasDeClique.set(card.id, agora);
+
+        const foiSelecionada = card.classList.toggle('selecionada');
+        const figId = card.id.replace('fig-', '');
+
+        // Sincroniza com a tabela do banco de dados
+        atualizarReservaNoBanco(figId, foiSelecionada);
+
+        modoSelecao = document.querySelectorAll('.figurinha-card.selecionada').length > 0;
+
+        if (typeof atualizarBarraTroca === 'function') atualizarBarraTroca();
+        if (navigator.vibrate) navigator.vibrate(40);
+    }
+
+    // Celular: Início do Toque
+    card.addEventListener('touchstart', function(e) {
+        if (e.target.closest('.fig-controles')) return;
+        
+        tempoInicioToque = Date.now();
+        moveuDistancia = false;
+
+        const touch = e.touches[0];
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+
+        pressTimer = setTimeout(() => {
+            if (!moveuDistancia) {
+                alternarReserva();
+            }
+        }, 400); 
+    }, { passive: true });
+
+    // Celular: Movimento do Dedo (Scroll)
+    card.addEventListener('touchmove', function(e) {
+        const touch = e.touches[0];
+        const mudancaX = Math.abs(touch.clientX - touchStartX);
+        const mudancaY = Math.abs(touch.clientY - touchStartY);
+
+        if (mudancaX > 8 || mudancaY > 8) {
+            moveuDistancia = true;
+            clearTimeout(pressTimer);
+        }
+    }, { passive: true });
+
+    // Celular: Fim do Toque
+    card.addEventListener('touchend', function(e) {
+        clearTimeout(pressTimer);
+        
+        if (e.target.closest('.fig-controles') || moveuDistancia) return;
+
+        const duracaoToque = Date.now() - tempoInicioToque;
+
+        if (duracaoToque < 350 && modoSelecao) {
+            e.preventDefault(); 
+            alternarReserva();
+        }
+    }, { passive: false });
+
+    // PC: Clique Direito
+    card.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        if (!e.target.closest('.fig-controles')) {
+            alternarReserva();
+        }
+    });
 });
 </script>
 

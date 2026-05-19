@@ -176,8 +176,8 @@ main { flex: 1; padding: 1.5rem 0; }
     position: absolute;
     top: .5rem;
     right: .5rem;
-    background: none;
-    border: none;
+    background: var(--verde);
+    border-radius: var(--radius);
     font-size: 1rem;
     cursor: pointer;
     opacity: .35;
@@ -543,88 +543,155 @@ main { flex: 1; padding: 1.5rem 0; }
     grid-template-columns: repeat(10, 1fr);
     gap: .35rem;
 }
-
 /* ================================
    Cards de figurinha
    ================================ */
 .figurinha-card {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: pan-y;     
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+    cursor: pointer;
     background: #f0f0f0;
     border: 2px solid #999;
     border-radius: var(--radius);
     padding: .3rem .2rem;
     text-align: center;
-    transition: border-color .15s, background .15s;
-    -webkit-tap-highlight-color: transparent;
-    user-select: none;
-    -webkit-user-select: none;
+    transition:
+        border-color .15s,
+        background .15s,
+        box-shadow .15s;
+    will-change: border-color, background, box-shadow;
 }
-.figurinha-card.tem {
-    border-color: var(--verde);
-    background: var(--verde);
+/* ─────────────────────────────
+   Tenho
+───────────────────────────── */
+.figurinha-card.tem{
+    border-color:var(--verde);
+    background:var(--verde);
+    color:#fff;
+}
+.figurinha-card.tem .fig-codigo{
+    color:#fff;
+}
+.figurinha-card.tem .fig-qtd{
+    color:#fff;
+}
+/* ─────────────────────────────
+   Repetida
+───────────────────────────── */
+.figurinha-card.repetida{
+    border-color:#c49000;
+    background:var(--amarelo);
+    color:var(--azul);
+}
+.figurinha-card.repetida .fig-codigo{
+    color:var(--azul);
+    font-weight:900;
+}
+.figurinha-card.repetida .fig-qtd{
+    color:var(--azul);
+}
+/* ─────────────────────────────
+   Reservada para troca
+───────────────────────────── */
+.figurinha-card.selecionada {
+    outline: 2px solid DeepSkyBlue;
+    box-shadow:
+        0 0 0 2px rgba(255,179,0,.25),
+        0 0 14px rgba(255,179,0,.45);
+    
+    /* MODIFICADO: Removido o transform: scale(1.03) para o card não mudar de tamanho sob o dedo do usuário */
+}
+
+.figurinha-card.selecionada::after {
+    content: '🔒';
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #111;
     color: #fff;
-}
-.figurinha-card.tem .fig-codigo { color: #fff; }
-.figurinha-card.tem .fig-qtd    { color: #fff; }
-.figurinha-card.repetida {
-    border-color: #c49000;
-    background: var(--amarelo);
-    color: var(--azul);
-}
-.figurinha-card.repetida .fig-codigo { color: var(--azul); font-weight: 900; }
-.figurinha-card.repetida .fig-qtd    { color: var(--azul); }
-
-.fig-codigo {
-    font-size: .72rem;
-    font-weight: 800;
-    display: block;
-    margin-bottom: .2rem;
-    color: var(--azul);
-    letter-spacing: .02em;
-}
-.fig-controles {
-    display: flex;
-    align-items: stretch;
-    border-radius: 4px;
-    overflow: hidden;
-    border: 1px solid rgba(0,0,0,.15);
-    margin-top: .2rem;
-    height: 26px;
-}
-.fig-metade {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    transition: background .1s;
-    min-width: 0;
-}
-.fig-metade-dec { border-right: 1px solid rgba(0,0,0,.15); }
-.fig-sinal {
-    font-size: .9rem;
+    font-size: .7rem;
     font-weight: 700;
-    line-height: 1;
-}
-.fig-qtd {
-    font-size: .82rem;
-    font-weight: 800;
-    width: 20px;
-    min-width: 20px;
-    text-align: center;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
-    border-left: 1px solid rgba(0,0,0,.15);
-    border-right: 1px solid rgba(0,0,0,.15);
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    
+    /* Garante que o ícone do cadeado não intercepte o toque do dedo */
+    pointer-events: none; 
 }
-
-/* Hover nas metades */
-.figurinha-card:not(.tem):not(.repetida) .fig-metade:hover { background: rgba(0,0,0,.08); }
-.figurinha-card.tem .fig-metade:hover      { background: rgba(255,255,255,.2); }
-.figurinha-card.repetida .fig-metade:hover { background: rgba(0,31,91,.12); }
-
+/* ─────────────────────────────
+   Código da figurinha
+───────────────────────────── */
+.fig-codigo{
+    font-size:.72rem;
+    font-weight:800;
+    display:block;
+    margin-bottom:.2rem;
+    color:var(--azul);
+    letter-spacing:.02em;
+}
+/* ─────────────────────────────
+   Controles
+───────────────────────────── */
+.fig-controles{
+    display:flex;
+    align-items:stretch;
+    border-radius:4px;
+    overflow:hidden;
+    border:1px solid rgba(0,0,0,.15);
+    margin-top:.2rem;
+    height:26px;
+}
+.fig-metade{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    transition:background .1s;
+    min-width:0;
+    -webkit-tap-highlight-color:transparent;
+}
+.fig-metade-dec{
+    border-right:1px solid rgba(0,0,0,.15);
+}
+.fig-sinal{
+    font-size:.9rem;
+    font-weight:700;
+    line-height:1;
+}
+.fig-qtd{
+    font-size:.82rem;
+    font-weight:800;
+    width:20px;
+    min-width:20px;
+    flex-shrink:0;
+    text-align:center;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-left:1px solid rgba(0,0,0,.15);
+    border-right:1px solid rgba(0,0,0,.15);
+}
+/* ─────────────────────────────
+   Hover desktop
+───────────────────────────── */
+.figurinha-card:not(.tem):not(.repetida) .fig-metade:hover{
+    background:rgba(0,0,0,.08);
+}
+.figurinha-card.tem .fig-metade:hover{
+    background:rgba(255,255,255,.2);
+}
+.figurinha-card.repetida .fig-metade:hover{
+    background:rgba(0,31,91,.12);
+}
 /* ================================
    Scanner
    ================================ */
@@ -783,6 +850,26 @@ main { flex: 1; padding: 1.5rem 0; }
     gap: .75rem;
     justify-content: flex-end;
     margin-top: 1rem;
+}
+/* Progresso modal */
+.modal-progresso {
+    text-align: center;
+    padding: 1.5rem 0;
+}
+.modal-opcoes .checkbox-label{
+    background:#f8f8f8;
+    padding:.65rem;
+    border-radius:8px;
+    border:1px solid #ddd;
+}
+.progresso-spinner {
+    font-size: 2rem;
+    animation: girar 1s linear infinite;
+    display: inline-block;
+}
+@keyframes girar {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
 }
 /* ================================
    Responsivo

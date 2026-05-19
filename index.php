@@ -13,9 +13,10 @@ $rotaCompleta = implode('/', array_slice($segmentos, 0, 2));
 $rotaBase = $segmentos[0] ?? '';
 
 $apis = [
- 'api/inventario' => 'api/inventario.php',
- 'api/csv' => 'api/csv.php',
- 'api/scanner' => 'api/scanner.php',
+    'api/inventario' => 'api/inventario.php',
+    'api/csv'        => 'api/csv.php',
+    'api/scanner'    => 'api/scanner.php',
+    'api/albuns'     => 'api/albuns.php',
 ];
 
 $paginas = [

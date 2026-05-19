@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IFC - Sistema de Voz Avançado v6</title>
+    <style>
+        :root {
+            --verde:   #004d26;
+            --amarelo: #f5c518;
+            --azul:    #001f5b;
+            --cinza:   #f4f4f4;
+            --texto:   #222;
+            --borda:   #ddd;
+            --radius:  8px;
+        }
+
+        body {
+            font-family: system-ui, sans-serif;
+            background: var(--cinza);
+            color: var(--texto);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        .header {
+            background: var(--verde);
+            color: #fff;
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .header .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            color: var(--amarelo);
+            font-weight: 700;
+            font-size: 1.25rem;
+            text-decoration: none;
+        }
+
+        main {
+            flex: 1;
+            padding: 1.5rem 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+            width: 100%;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            border: 1px solid var(--borda);
+            margin-bottom: 1.5rem;
+        }
+
+        .voice-dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .status-box {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            background: #fdfbf7;
+            padding: 1rem;
+            border-radius: var(--radius);
+            border-left: 5px solid var(--amarelo);
+            margin-bottom: 1rem;
+        }
+
+        .status-line {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+        }
+
+        .badge {
+            padding: 0.35rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #fff;
+        }
+
+        .badge-danger { background: #dc3545; }
+        .badge-success { background: #28a745; }
+        .badge-info { background: #17a2b8; }
+        .badge-warning { background: #ffc107; color: #222; }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.8rem 1.2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+        }
+
+        @media (min-width: 576px) {
+            .btn { width: auto; }
+        }
+
+        .btn-primary { background: var(--verde); color: #fff; }
+        .btn-primary:hover { background: #003319; }
+        .btn-secondary { background: var(--azul); color: #fff; }
+        .btn-danger { background: #dc3545; color: #fff; }
+        .btn-accent { background: var(--amarelo); color: #222; }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        @media (min-width: 576px) {
+            .btn-group { flex-direction: row; flex-wrap: wrap; }
+        }
+
+        .transcript-box {
+            background: #222;
+            color: #00ff00;
+            font-family: monospace;
+            padding: 1rem;
+            border-radius: var(--radius);
+            height: 120px;
+            overflow-y: auto;
+            margin-bottom: 1rem;
+            border: 2px solid #333;
+            font-size: 0.95rem;
+        }
+
+        /* Área de Rolagem Otimizada para a Tabela */
+        .table-responsive {
+            width: 100%;
+            max-height: 400px;
+            overflow-y: auto;
+            overflow-x: auto;
+            margin-top: 1rem;
+            border: 1px solid var(--borda);
+            border-radius: 4px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        /* Mantém o cabeçalho visível ao rolar */
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            box-shadow: inset 0 -1px 0 var(--borda);
+        }
+
+        th, td {
+            padding: 0.75rem 0.5rem;
+            border-bottom: 1px solid var(--borda);
+        }
+
+        .action-cell {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .grande-btn {
+            padding: 0.6rem 1.2rem;
+            font-size: 1.3rem;
+            font-weight: bold;
+            border-radius: 6px;
+            border: 1px solid var(--borda);
+            background: #f8f9fa;
+            cursor: pointer;
+            min-width: 50px;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .grande-btn:active { background: #e2e6ea; }
+
+        .btn-remover-linha {
+            padding: 0.6rem;
+            font-size: 1rem;
+            background: none;
+            border: none;
+            color: #dc3545;
+            cursor: pointer;
+            margin-left: 0.5rem;
+        }
+
+        .hidden-file-input { display: none; }
+
+        @media print {
+            .header, .btn-group, .voice-controls, .status-box, .transcript-box, .grande-btn, .btn-remover-linha, .no-print {
+                display: none !important;
+            }
+            .card { border: none; padding: 0; }
+            .table-responsive { max-height: none; overflow: visible; }
+            table { width: 100%; border: 1px solid #000; }
+            th, td { border: 1px solid #000; padding: 0.5rem; }
+        }
+
+        .help-box {
+            background: #e9ecef;
+            padding: 1rem;
+            border-radius: var(--radius);
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header class="header">
+        <div class="container">
+            <a href="#" class="logo">IFC ⚽ Voz & Inventário v6</a>
+            <span class="no-print">Trava de Limites & Grupos</span>
+        </div>
+    </header>
+
+    <main class="container">
+        
+        <div class="voice-dashboard">
+            <div class="card voice-controls">
+                <h3>🎙️ Assistente de Voz</h3>
+                
+                <div class="status-box">
+                    <div class="status-line">
+                        <span>Microfone Contínuo:</span>
+                        <span id="mic-status" class="badge badge-danger">Desativado</span>
+                    </div>
+                    <div class="status-line">
+                        <span>Trava de Confirmação:</span>
+                        <span id="lock-status" class="badge badge-danger">🔒 Travado</span>
+                    </div>
+                </div>
+
+                <p><strong>Console de Reconhecimento:</strong></p>
+                <div id="transcript-console" class="transcript-box">
+                    [Clique em Iniciar para ativar]
+                </div>
+
+                <div class="btn-group">
+                    <button id="btn-toggle-mic" class="btn btn-primary" onclick="toggleMicrofone()">🎤 Iniciar Ditado</button>
+                    <button id="btn-manual-unlock" class="btn btn-secondary" onclick="toggleTravaManual()">🔓 Alternar Trava</button>
+                </div>
+
+                <div class="help-box" style="margin-top: 1.25rem;">
+                    <strong>🗣️ Novos Comandos de Grupo:</strong>
+                    <ul style="margin: 0.5rem 0 0 1.2rem; padding: 0; font-size: 0.85rem; color: #333;">
+                        <li>Diga <strong>"Grupo A completo"</strong> ou <strong>"Grupo J todas"</strong></li>
+                        <li>Diga <strong>"Panini 0"</strong> ou <strong>"Panini 00"</strong> para registrar a PNN00.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                    <h3 style="margin: 0;">📋 Fila de Figurinhas</h3>
+                    <span id="total-badge" class="badge badge-info" style="font-size: 1rem;">0 itens</span>
+                </div>
+
+                <div class="table-responsive">
+                    <table id="tabela-figurinhas">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>País / Origem</th>
+                                <th>Qtd</th>
+                                <th class="no-print">Ajuste Rápido</th>
+                            </tr>
+                        </thead>
+                        <tbody id="corpo-tabela">
+                            <tr id="linha-vazia">
+                                <td colspan="4" style="text-align: center; color: #888; padding: 2rem;">Lista vazia. Fale no microfone ou importe um CSV.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="btn-group no-print" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--borda);">
+                    <button class="btn btn-accent" onclick="confirmarLoteCompleto()">💾 Salvar Lote</button>
+                    <button class="btn btn-secondary" onclick="exportarCSV()">📤 Exportar CSV (8 col)</button>
+                    <button class="btn btn-secondary" onclick="document.getElementById('input-importar').click()">📥 Importar CSV (8 col)</button>
+                    <button class="btn btn-secondary" onclick="window.print()">🖨️ Imprimir</button>
+                    <button class="btn btn-danger" onclick="limparTabela()">✕ Limpar</button>
+                </div>
+                <input type="file" id="input-importar" class="hidden-file-input" accept=".csv" onchange="importarCSV(event)">
+            </div>
+        </div>
+
+    </main>
+
+<script>
+        const dicionarioFonetico = {
+            "PANINI": "PNN", "FWC": "FWC", "MEXICO": "MEX", "ÁFRICA DO SUL": "RSA", "CORÉIA DO SUL": "KOR", 
+            "REPÚBLICA TCHECA": "CZE", "CANADÁ": "CAN", "BÓSNIA": "BIH", "CATAR": "QAT", "SUÍÇA": "SUI", "BRASIL": "BRA", 
+            "MARROCOS": "MAR", "HAITI": "HAI", "ESCÓCIA": "SCO", "ESTADOS UNIDOS": "USA", "PARAGUAI": "PAR",
+            "AUSTRÁLIA": "AUS", "TURQUIA": "TUR", "ALEMANHA": "GER", "CURAÇAO": "CUW", "COSTA DO MARFIM": "CIV", 
+            "EQUADOR": "ECU", "HOLANDA": "NED", "JAPÃO": "JPN", "SUÉCIA": "SWE", "TUNÍSIA": "TUN", "BÉLGICA": "BEL",
+            "EGITO": "EGY", "IRÃ": "IRN", "NOVA ZELÂNDIA": "NZL", "ESPANHA": "ESP", "CABO VERDE": "CPV", 
+            "ARÁBIA SAUDITA": "KSA", "URUGUAI": "URU", "FRANÇA": "FRA", "SENEGAL": "SEN", "IRAQUE": "IRQ",
+            "NORUEGA": "NOR", "ARGENTINA": "ARG", "ARGÉLIA": "ALG", "ÁUSTRIA": "AUT", "JORDANIA": "JOR",
+            "PORTUGAL": "POR", "CONGO": "COD", "UZBEQUISTÃO": "UZB", "COLÔMBIA": "COL", "INGLATERRA": "ENG",
+            "CROACIA": "CRO", "GANA": "GHA", "PANAMÁ": "PAN", "COCA": "CC"
+        };
+
+        const mapaGrupos = {
+            "A": ["MEX", "RSA", "KOR", "CZE"],
+            "B": ["CAN", "BIH", "QAT", "SUI"],
+            "C": ["BRA", "MAR", "HAI", "SCO"],
+            "D": ["USA", "PAR", "AUS", "TUR"],
+            "E": ["GER", "CUW", "CIV", "ECU"],
+            "F": ["NED", "JPN", "SWE", "TUN"],
+            "G": ["BEL", "EGY", "IRN", "NZL"],
+            "H": ["ESP", "CPV", "KSA", "URU"],
+            "I": ["FRA", "SEN", "IRQ", "NOR"],
+            "J": ["ARG", "ALG", "AUT", "JOR"],
+            "K": ["POR", "COD", "UZB", "COL"],
+            "L": ["ENG", "CRO", "GHA", "PAN"]
+        };
+
+        let inventario = {};
+        let reconhecimentoVoz = null;
+        let microfoneAtivo = false;
+        let sistemaPausado = false;
+        let confirmarPorVozLiberado = false;
+
+        const consoleVoz = document.getElementById('transcript-console');
+        const micBadge = document.getElementById('mic-status');
+        const lockBadge = document.getElementById('lock-status');
+        const btnToggleMic = document.getElementById('btn-toggle-mic');
+
+        function atualizarBadgeMicrofone() {
+            if (!microfoneAtivo) {
+                micBadge.textContent = "Desativado";
+                micBadge.className = "badge badge-danger";
+            } else if (sistemaPausado) {
+                micBadge.textContent = "⏸️ Pausado";
+                micBadge.className = "badge badge-warning";
+            } else {
+                micBadge.textContent = "Ouvindo...";
+                micBadge.className = "badge badge-success";
+            }
+        }
+
+        function iniciarWebSpeech() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                consoleVoz.textContent = "❌ Navegador incompatível.";
+                return;
+            }
+
+            reconhecimentoVoz = new SpeechRecognition();
+            reconhecimentoVoz.continuous = false; 
+            reconhecimentoVoz.interimResults = false;
+            reconhecimentoVoz.lang = 'pt-BR';
+
+            reconhecimentoVoz.onstart = () => {
+                microfoneAtivo = true;
+                atualizarBadgeMicrofone();
+            };
+
+            reconhecimentoVoz.onend = () => {
+                if (microfoneAtivo) {
+                    reconhecimentoVoz.start(); 
+                } else {
+                    atualizarBadgeMicrofone();
+                    btnToggleMic.textContent = "🎤 Iniciar Ditado";
+                    btnToggleMic.className = "btn btn-primary";
+                }
+            };
+
+            reconhecimentoVoz.onerror = (e) => {
+                if(e.error !== 'no-speech') logConsole("Aviso: " + e.error);
+            };
+
+            reconhecimentoVoz.onresult = (event) => {
+                const resultado = event.results[event.results.length - 1][0].transcript;
+                processarTextoDito(resultado);
+            };
+        }
+
+        function toggleMicrofone() {
+            if (!reconhecimentoVoz) iniciarWebSpeech();
+            if (!reconhecimentoVoz) return;
+
+            if (microfoneAtivo) {
+                microfoneAtivo = false;
+                sistemaPausado = false;
+                reconhecimentoVoz.stop();
+            } else {
+                microfoneAtivo = true;
+                sistemaPausado = false;
+                reconhecimentoVoz.start();
+                logConsole("🎤 Ouvinte ativo!");
+            }
+        }
+
+        function logConsole(msg) {
+            const p = document.createElement('div');
+            p.textContent = `> ${msg}`;
+            consoleVoz.appendChild(p);
+            consoleVoz.scrollTop = consoleVoz.scrollHeight;
+        }
+
+        function obterLimiteMaximo(sigla) {
+            if (sigla === "FWC") return 19;
+            if (sigla === "CC") return 14;
+            if (sigla === "PNN") return 0; // Regra especial para PNN00
+            return 20;
+        }
+
+        function encontrarNomePorSigla(sigla) {
+            for (const [nome, s] of Object.entries(dicionarioFonetico)) {
+                if (s === sigla) return nome;
+            }
+            return sigla;
+        }
+
+        function processarTextoDito(textoBruto) {
+            let texto = textoBruto.toUpperCase().trim();
+
+            if (texto.includes("CONTINUAR DITADO") || texto.includes("RETOMAR DITADO")) {
+                if (sistemaPausado) {
+                    sistemaPausado = false;
+                    atualizarBadgeMicrofone();
+                    logConsole("▶️ Ditado retomado!");
+                    emitirSom(true);
+                }
+                return;
+            }
+
+            if (texto.includes("PAUSAR DITADO") || texto.includes("CONGELAR DITADO")) {
+                if (!sistemaPausado) {
+                    sistemaPausado = true;
+                    atualizarBadgeMicrofone();
+                    logConsole("⏸️ Ditado pausado.");
+                    emitirSom(false);
+                }
+                return;
+            }
+
+            if (sistemaPausado) return;
+
+            logConsole(`Capturado: "${textoBruto}"`);
+
+            if (texto === "EXCLUIR TODAS" || texto === "LIMPAR TUDO" || texto === "APAGAR TUDO") {
+                if (Object.keys(inventario).length > 0) {
+                    inventario = {};
+                    logConsole("✕ Toda a fila foi excluída.");
+                    renderizarTabela();
+                    emitirSom(false);
+                }
+                return;
+            }
+
+            // =================================================================
+            // BLOCO DINÂMICO: EXCLUIR QUALQUER GRUPO (Com correção fonética)
+            // =================================================================
+            if (texto.includes("GRUPO")) {
+                // Correções fonéticas comuns para evitar confusão do navegador
+                let textoCorrigido = texto
+                    .replace(/\bCAR\b/g, "K")      // Se entendeu "CAR", vira "K"
+                    .replace(/\bCARRO\b/g, "K")    // Se entendeu "CARRO", vira "K"
+                    .replace(/\bGRUPO E\b/g, "GRUPO E") // Mantém o E padrão
+                    .replace(/\bGRUPO I\b/g, "GRUPO I");
+
+                // Se o som de "I" virar "E" ou vice-versa, tratamos no match aceitando ambas as variações
+                const matchGrupo = textoCorrigido.match(/(?:EXCLUIR|APAGAR)\s+GRUPO\s+([A-L])/);
+                
+                if (matchGrupo) {
+                    let letraGrupo = matchGrupo[1];
+                    let siglasDoGrupo = mapaGrupos[letraGrupo];
+
+                    // SEGUNDA CAMADA DE AJUSTE (Se o grupo não existir por erro de I/E)
+                    if (!siglasDoGrupo) {
+                        if (letraGrupo === "E" && texto.includes(" I")) letraGrupo = "I";
+                        if (letraGrupo === "I" && texto.includes(" E")) letraGrupo = "E";
+                        siglasDoGrupo = mapaGrupos[letraGrupo];
+                    }
+
+                    if (siglasDoGrupo) {
+                        let deletados = 0;
+                        for (const codigo in inventario) {
+                            if (siglasDoGrupo.some(sigla => codigo.startsWith(sigla))) {
+                                delete inventario[codigo];
+                                deletados++;
+                            }
+                        }
+                        
+                        if (deletados > 0) {
+                            logConsole(`🗑️ Removidos ${deletados} itens do Grupo ${letraGrupo}.`);
+                            renderizarTabela();
+                            emitirSom(true);
+                        } else {
+                            logConsole(`⚠️ Nenhum item do Grupo ${letraGrupo} para excluir.`);
+                            emitirSom(false);
+                        }
+                    }
+                    return;
+                }
+            }
+
+            // =================================================================
+            // BLOCO INTEGRADO: EXCLUIR PAÍS COMPLETO OU ITEM ÚNICO (Ex: Brasil 5)
+            // =================================================================
+            if (texto.startsWith("EXCLUIR ") || texto.startsWith("APAGAR ")) {
+                let textoSemAcao = texto.replace("EXCLUIR ", "").replace("APAGAR ", "")
+                                        .replace(" TODOS", "").replace(" TUDO", "").replace(" TODAS", "").trim();
+                
+                const numeroNaExclusao = textoSemAcao.match(/\d+/);
+                let numeroItem = numeroNaExclusao ? parseInt(numeroNaExclusao[0]) : null;
+                
+                if (numeroNaExclusao) {
+                    textoSemAcao = textoSemAcao.replace(numeroNaExclusao[0], '').trim();
+                }
+
+                let siglaAlvo = null;
+                let nomePaisAlvo = "";
+
+                for (const [chave, sigla] of Object.entries(dicionarioFonetico)) {
+                    if (textoSemAcao === chave || textoSemAcao.includes(chave) || (chave.includes(textoSemAcao) && textoSemAcao.length > 2)) {
+                        siglaAlvo = sigla;
+                        nomePaisAlvo = chave;
+                        break;
+                    }
+                }
+
+                if (siglaAlvo) {
+                    // Caso tenha número ou o termo "ZERO" -> Remove item único
+                    if (numeroItem !== null || texto.includes("ZERO")) {
+                        if (texto.includes("ZERO") || numeroItem === 0) numeroItem = 0;
+                        
+                        let numeroFormatado = String(numeroItem).padStart(2, '0');
+                        let codigoAlvo = siglaAlvo + numeroFormatado;
+
+                        if (inventario[codigoAlvo]) {
+                            delete inventario[codigoAlvo];
+                            logConsole(`🗑️ Item removido: ${codigoAlvo}`);
+                            renderizarTabela();
+                            emitirSom(true);
+                        } else {
+                            logConsole(`⚠️ Item ${codigoAlvo} não encontrado na fila.`);
+                            emitirSom(false);
+                        }
+                    } 
+                    // Caso não tenha número -> Remove o país inteiro
+                    else {
+                        let deletados = 0;
+                        for (const codigo in inventario) {
+                            if (codigo.startsWith(siglaAlvo)) {
+                                delete inventario[codigo];
+                                deletados++;
+                            }
+                        }
+                        if (deletados > 0) {
+                            logConsole(`🗑️ Removidos ${deletados} itens de: ${nomePaisAlvo}.`);
+                            renderizarTabela();
+                            emitirSom(true);
+                        } else {
+                            logConsole(`⚠️ Nenhum item de ${nomePaisAlvo} na fila.`);
+                            emitirSom(false);
+                        }
+                    }
+                    return;
+                }
+            }
+
+            if (texto === "ÁLBUM COMPLETO" || texto === "ALBUM COMPLETO" || texto === "ÁLBUM TODAS" || texto === "ALBUM TODAS" || texto === "ÁLBUM TUDO" || texto === "ALBUM TUDO") {
+                logConsole("📦 Inserindo o ÁLBUM COMPLETO...");
+                for (const [nomePais, sigla] of Object.entries(dicionarioFonetico)) {
+                    let limiteMax = obterLimiteMaximo(sigla);
+                    if (limiteMax === 0 && sigla === "PNN") {
+                        adicionarItemFila("PNN00", nomePais, 1);
+                    } else {
+                        for (let n = 1; n <= limiteMax; n++) {
+                            let numStr = String(n).padStart(2, '0');
+                            adicionarItemFila(sigla + numStr, nomePais, 1);
+                        }
+                    }
+                }
+                emitirSom(true);
+                return;
+            }
+
+            if (texto.includes("CORRIGIR") || texto.includes("APAGAR") || texto.includes("VOLTAR")) {
+                removerUltimoItem();
+                emitirSom(false);
+                return;
+            }
+
+            if (texto.includes("HABILITAR CONFIRMAR COM VOZ")) {
+                confirmarPorVozLiberado = true;
+                lockBadge.textContent = "🔓 Liberado";
+                lockBadge.className = "badge badge-success";
+                logConsole("🔓 Confirmação destravada!");
+                emitirSom(true);
+                return;
+            }
+
+            if (texto === "CONFIRMAR" || texto === "SALVAR") {
+                if (confirmarPorVozLiberado) {
+                    confirmarLoteCompleto();
+                } else {
+                    logConsole("🔒 Bloqueado! Libere por voz.");
+                    emitirSom(false);
+                }
+                return;
+            }
+
+            // =================================================================
+            // BLOCO INTEGRADO: ADICIONAR GRUPO COMPLETO (Correção I/E/K)
+            // =================================================================
+            if (texto.includes("GRUPO") && (texto.includes("COMPLETO") || texto.includes("TODAS") || texto.includes("TODOS"))) {
+                
+                // Dicionário de sinônimos fonéticos para os grupos problemáticos
+                let textoCorrigido = texto
+                    .replace(/\bCÁ\b/g, "K")
+                    .replace(/\bCAR\b/g, "K")
+                    .replace(/\bCARRO\b/g, "K")
+                    .replace(/\bKILO\b/g, "K")
+                    .replace(/\bINDIA\b/g, "I")   // Se falar "Grupo India", vira I
+                    .replace(/\bíndia\b/g, "I")   // Se falar "Grupo índia", vira I
+                    .replace(/\bESCOLA\b/g, "E")   // Se falar "Grupo Escola", vira E
+                    .replace(/\bÉCO\b/g, "E");
+
+                let matchGrupo = textoCorrigido.match(/GRUPO\s+([A-L])/);
+                
+                // Se o navegador confundiu a letra seca "I" com "E" (ou vice-versa)
+                if (!matchGrupo) {
+                    if (texto.includes("GRUPO E") || texto.includes("GRUPO É")) {
+                        // Se o usuário nitidamente tentou falar "I" (Igreja/India) mas o navegador digitou E
+                        if (texto.includes("IGREJA") || texto.includes("INDIA")) {
+                            textoCorrigido = textoCorrigido.replace(/GRUPO\s+[EÉ]/, "GRUPO I");
+                        }
+                    }
+                    matchGrupo = textoCorrigido.match(/GRUPO\s+([A-L])/);
+                }
+
+                if (matchGrupo && mapaGrupos[matchGrupo[1]]) {
+                    let letraGrupo = matchGrupo[1];
+                    let countriesDoGrupo = mapaGrupos[letraGrupo];
+
+                    logConsole(`📦 Inserindo todo o Grupo ${letraGrupo}...`);
+                    countriesDoGrupo.forEach(sigla => {
+                        let limiteMax = obterLimiteMaximo(sigla);
+                        let nomePais = encontrarNomePorSigla(sigla);
+                        if (limiteMax === 0 && sigla === "PNN") {
+                            adicionarItemFila("PNN00", nomePais, 1);
+                        } else {
+                            for (let n = 1; n <= limiteMax; n++) {
+                                let numStr = String(n).padStart(2, '0');
+                                adicionarItemFila(sigla + numStr, nomePais, 1);
+                            }
+                        }
+                    });
+                    emitirSom(true);
+                    return;
+                }
+            }
+
+            if (texto.includes("COMPLETO") || texto.includes("TODAS") || texto.includes("TODOS")) {
+                let textoSemComando = texto.replace("COMPLETO", "").replace("TODAS", "").replace("TODOS", "").replace(/[^A-ZÃÉÍÓÚÇ ]/g, '').trim();
+                let siglaIdentificada = null;
+                let nomeSelecaoReal = "";
+
+                for (const [chave, sigla] of Object.entries(dicionarioFonetico)) {
+                    if (textoSemComando.includes(chave) || (chave.includes(textoSemComando) && textoSemComando.length > 2)) {
+                        siglaIdentificada = sigla;
+                        nomeSelecaoReal = chave;
+                        break;
+                    }
+                }
+
+                if (siglaIdentificada) {
+                    let limiteMaximo = obterLimiteMaximo(siglaIdentificada);
+                    if (limiteMaximo === 0 && siglaIdentificada === "PNN") {
+                        logConsole(`📦 Lote: ${nomeSelecaoReal} (PNN00)`);
+                        adicionarItemFila("PNN00", nomeSelecaoReal, 1);
+                    } else {
+                        logConsole(`📦 Lote: ${nomeSelecaoReal} (01 a ${limiteMaximo})`);
+                        for (let n = 1; n <= limiteMaximo; n++) {
+                            let numStr = String(n).padStart(2, '0');
+                            adicionarItemFila(siglaIdentificada + numStr, nomeSelecaoReal, 1);
+                        }
+                    }
+                    emitirSom(true);
+                    return;
+                }
+            }
+
+            const numerosEncontrados = texto.match(/\d+/);
+            let numeroReal = numerosEncontrados ? parseInt(numerosEncontrados[0]) : null;
+            
+            if (texto.includes("PANINI") && (texto.includes("ZERO") || numeroReal === 0)) {
+                adicionarItemFila("PNN00", "PANINI", 1);
+                logConsole("Adicionado: PNN00");
+                emitirSom(true);
+                return;
+            }
+
+            if (numeroReal === null) return;
+
+            let textoSemNumero = texto.replace(numerosEncontrados[0], '').replace(/[^A-ZÃÉÍÓÚÇ ]/g, '').trim();
+            let siglaIdentificada = null;
+            let nomeSelecaoReal = "";
+
+            for (const [chave, sigla] of Object.entries(dicionarioFonetico)) {
+                if (textoSemNumero.includes(chave) || (chave.includes(textoSemNumero) && textoSemNumero.length > 2)) {
+                    siglaIdentificada = sigla;
+                    nomeSelecaoReal = chave;
+                    break;
+                }
+            }
+
+            if (siglaIdentificada) {
+                let limiteMaximo = obterLimiteMaximo(siglaIdentificada);
+                
+                if (siglaIdentificada === "PNN" && numeroReal !== 0) {
+                    logConsole(`❌ Inválido! Panini só possui a figurinha 00.`);
+                    emitirSom(false);
+                    return;
+                }
+                
+                if (siglaIdentificada !== "PNN" && (numeroReal > limiteMaximo || numeroReal < 1)) {
+                    logConsole(`❌ Inválido! ${nomeSelecaoReal} só vai até ${limiteMaximo}.`);
+                    emitirSom(false);
+                    return;
+                }
+
+                let numeroFormatado = String(numeroReal).padStart(2, '0');
+                let codigoFinal = siglaIdentificada + numeroFormatado;
+                adicionarItemFila(codigoFinal, nomeSelecaoReal, 1);
+                logConsole(`Adicionado: ${codigoFinal}`);
+                emitirSom(true);
+            } else {
+                logConsole(`⚠️ Não entendi: "${textoSemNumero}"`);
+                emitirSom(false);
+            }
+        }
+
+        function adicionarItemFila(codigo, selecao, quantidade) {
+            if (inventario[codigo]) {
+                inventario[codigo].quantidade += quantidade;
+            } else {
+                inventario[codigo] = { codigo, selecao, quantidade };
+            }
+            renderizarTabela();
+        }
+
+        function removerUltimoItem() {
+            const chaves = Object.keys(inventario);
+            if (chaves.length > 0) {
+                const ultimaChave = chaves[chaves.length - 1];
+                logConsole(`🗑️ Removido: ${ultimaChave}`);
+                delete inventario[ultimaChave];
+                renderizarTabela();
+            }
+        }
+
+        function alterarQuantidade(codigo, delta) {
+            if (inventario[codigo]) {
+                inventario[codigo].quantidade += delta;
+                if (inventario[codigo].quantidade <= 0) delete inventario[codigo];
+                renderizarTabela();
+            }
+        }
+
+        function deletarItem(codigo) {
+            if (inventario[codigo]) {
+                delete inventario[codigo];
+                renderizarTabela();
+            }
+        }
+
+        function limparTabela() {
+            inventario = {};
+            renderizarTabela();
+        }
+
+        function renderizarTabela() {
+            const corpo = document.getElementById('corpo-tabela');
+            const linhaVazia = document.getElementById('linha-vazia');
+            const totalBadge = document.getElementById('total-badge');
+            
+            const linhas = Array.from(corpo.querySelectorAll('tr'));
+            linhas.forEach(l => { if(l.id !== 'linha-vazia') l.remove(); });
+
+            const itens = Object.values(inventario);
+            totalBadge.textContent = `${itens.length} item(ns)`;
+
+            if (itens.length === 0) {
+                linhaVazia.style.display = '';
+                return;
+            }
+
+            linhaVazia.style.display = 'none';
+            itens.sort((a, b) => a.codigo.localeCompare(b.codigo));
+
+            itens.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${item.codigo}</strong></td>
+                    <td>${item.selecao}</td>
+                    <td><strong style="font-size:1.2rem;">${item.quantidade}</strong></td>
+                    <td class="no-print action-cell">
+                        <button class="grande-btn" onclick="alterarQuantidade('${item.codigo}', 1)">+</button>
+                        <button class="grande-btn" onclick="alterarQuantidade('${item.codigo}', -1)">-</button>
+                        <button class="btn-remover-linha" onclick="deletarItem('${item.codigo}')">✕</button>
+                    </td>
+                `;
+                corpo.appendChild(tr);
+            });
+        }
+
+        function toggleTravaManual() {
+            confirmarPorVozLiberado = !confirmarPorVozLiberado;
+            lockBadge.textContent = confirmarPorVozLiberado ? "🔓 Liberado" : "🔒 Travado";
+            lockBadge.className = confirmarPorVozLiberado ? "badge badge-success" : "badge badge-danger";
+        }
+
+        // Geração do CSV estruturado e robusto
+        function exportarCSV() {
+            const itens = Object.values(inventario);
+            if (itens.length === 0) return alert("Fila vazia!");
+
+            itens.sort((a, b) => a.codigo.localeCompare(b.codigo));
+            let csv = "\uFEFFCodigo;Quantidade;Codigo;Quantidade;Codigo;Quantidade;Codigo;Quantidade\n";
+            
+            for (let i = 0; i < itens.length; i += 4) {
+                let linhaCampos = [];
+                for (let j = 0; j < 4; j++) {
+                    let idx = i + j;
+                    if (idx < itens.length) {
+                        linhaCampos.push(itens[idx].codigo);
+                        linhaCampos.push(itens[idx].quantidade);
+                    } else {
+                        linhaCampos.push("");
+                        linhaCampos.push("");
+                    }
+                }
+                csv += linhaCampos.join(";") + "\n";
+            }
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `inventario_matriz_${new Date().toISOString().slice(0,10)}.csv`;
+            link.click();
+        }
+
+        function importarCSV(event) {
+            const arquivo = event.target.files[0];
+            if (!arquivo) return;
+
+            const leitor = new FileReader();
+            leitor.onload = function(e) {
+                const linhas = e.target.result.split(/\r?\n/);
+                let carregados = 0;
+
+                linhas.forEach((linha, i) => {
+                    if (i === 0 || !linha.trim()) return;
+                    const cols = linha.split(';');
+                    for (let j = 0; j < cols.length; j += 2) {
+                        if (cols[j] && cols[j].trim()) {
+                            const cod = cols[j].trim().toUpperCase();
+                            const proxCol = cols[j + 1];
+                            const qtd = proxCol ? (parseInt(proxCol) || 1) : 1;
+                            if (cod && cod !== "CODIGO") {
+                                let nomePais = "Importado via CSV";
+                                // Descobrir o nome do país real pela sigla lida do CSV
+                                for (const [nome, s] of Object.entries(dicionarioFonetico)) {
+                                    if (cod.startsWith(s)) {
+                                        nomePais = nome;
+                                        break;
+                                    }
+                                }
+                                adicionarItemFila(cod, nomePais, qtd);
+                                carregados++;
+                            }
+                        }
+                    }
+                });
+                alert(`${carregados} figurinhas carregadas!`);
+                event.target.value = '';
+            };
+            leitor.readAsText(arquivo);
+        }
+
+        function confirmarLoteCompleto() {
+            const itens = Object.values(inventario);
+            if (itens.length === 0) return alert("Nenhum item na fila.");
+            alert(`🎉 Sucesso: Lote com ${itens.length} figurinha(s) processado e salvo!`);
+            confirmarPorVozLiberado = false;
+            lockBadge.textContent = "🔒 Travado";
+            lockBadge.className = "badge badge-danger";
+            limparTabela();
+        }
+
+        function emitirSom(sucesso) {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.frequency.setValueAtTime(sucesso ? 880 : 220, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                osc.start();
+                osc.stop(audioCtx.currentTime + (sucesso ? 0.1 : 0.25));
+            } catch (e) {}
+        }
+
+        window.onload = () => { iniciarWebSpeech(); };
+    </script>
+</body>
+</html>
+
