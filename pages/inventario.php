@@ -388,47 +388,50 @@ document.addEventListener('click', function(e) {
 // ─────────────────────────────────────
 // Reservar figurinhas (Sincronizado com Banco de Dados)
 // ─────────────────────────────────────
-let modoSelecao = document.querySelectorAll('.figurinha-card.selecionada').length > 0;
 const travasDeClique = new Map(); 
 
-// Envia o estado de reserva em tempo real para o banco de dados
+// Comunica a alteração para a API em segundo plano
 async function atualizarReservaNoBanco(figurinhaId, reservar) {
     const albumId = '<?= $albumId ?>';
     const acao = reservar ? 'reservar' : 'desreservar';
     
     try {
+        const formData = new FormData();
+        formData.append('album_id', albumId);
+        formData.append('figurinha_id', figurinhaId);
+        formData.append('acao', acao);
+
         await fetch('/api/inventario', {
             method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: `figurinha_id=${figurinhaId}&album_id=${albumId}&acao=${acao}`
+            body: formData
         });
     } catch (erro) {
         console.error('Erro ao salvar reserva no servidor:', erro);
     }
 }
 
-// CONFIGURAR OS CARDS
+// Configuração de eventos nos cards
 document.querySelectorAll('.figurinha-card').forEach(card => {
     let pressTimer = null;
     let tempoInicioToque = 0;
     let touchStartX = 0;
     let touchStartY = 0;
     let moveuDistancia = false;
+    let disparouLongPress = false;
 
     function alternarReserva() {
         const agora = Date.now();
         const ultimoClique = travasDeClique.get(card.id) || 0;
 
+        // Evita múltiplos disparos acidentais seguidos
         if (agora - ultimoClique < 500) return;
         travasDeClique.set(card.id, agora);
 
         const foiSelecionada = card.classList.toggle('selecionada');
         const figId = card.id.replace('fig-', '');
 
-        // Sincroniza com a tabela do banco de dados
+        // Dispara o salvamento na API remota
         atualizarReservaNoBanco(figId, foiSelecionada);
-
-        modoSelecao = document.querySelectorAll('.figurinha-card.selecionada').length > 0;
 
         if (typeof atualizarBarraTroca === 'function') atualizarBarraTroca();
         if (navigator.vibrate) navigator.vibrate(40);
@@ -436,23 +439,26 @@ document.querySelectorAll('.figurinha-card').forEach(card => {
 
     // Celular: Início do Toque
     card.addEventListener('touchstart', function(e) {
-        if (e.target.closest('.fig-controles')) return;
+        if (e.target.closest('.fig-controles')) return; // Botões nativos de + e -
         
         tempoInicioToque = Date.now();
         moveuDistancia = false;
+        disparouLongPress = false;
 
         const touch = e.touches[0];
         touchStartX = touch.clientX;
         touchStartY = touch.clientY;
 
+        // Temporizador para o Toque Longo (Ativa/Desativa o cadeado)
         pressTimer = setTimeout(() => {
             if (!moveuDistancia) {
+                disparouLongPress = true;
                 alternarReserva();
             }
         }, 400); 
     }, { passive: true });
 
-    // Celular: Movimento do Dedo (Scroll)
+    // Celular: Cancelamento por Scroll
     card.addEventListener('touchmove', function(e) {
         const touch = e.touches[0];
         const mudancaX = Math.abs(touch.clientX - touchStartX);
@@ -464,21 +470,35 @@ document.querySelectorAll('.figurinha-card').forEach(card => {
         }
     }, { passive: true });
 
-    // Celular: Fim do Toque
+    // Celular: Fim do Toque (Trata o clique curto esquerdo/direito)
     card.addEventListener('touchend', function(e) {
         clearTimeout(pressTimer);
         
-        if (e.target.closest('.fig-controles') || moveuDistancia) return;
+        if (e.target.closest('.fig-controles') || moveuDistancia || disparouLongPress) return;
 
         const duracaoToque = Date.now() - tempoInicioToque;
 
-        if (duracaoToque < 350 && modoSelecao) {
-            e.preventDefault(); 
-            alternarReserva();
+        // Se foi um toque rápido (< 350ms), roda a lógica antiga de clique esquerdo/direito
+        if (duracaoToque < 350) {
+            e.preventDefault(); // Impede duplo disparo do clique nativo
+            
+            // Descobre onde foi o toque em relação à largura do card
+            const rect = card.getBoundingClientRect();
+            const toqueX = e.changedTouches[0].clientX - rect.left;
+            const meioDoCard = rect.width / 2;
+
+            // Simula os cliques antigos de aumentar e diminuir quantidade
+            if (toqueX < meioDoCard) {
+                const btnDec = card.querySelector('.fig-metade-dec');
+                if (btnDec) btnDec.click();
+            } else {
+                const btnInc = card.querySelector('.fig-metade-inc');
+                if (btnInc) btnInc.click();
+            }
         }
     }, { passive: false });
 
-    // PC: Clique Direito
+    // PC: Clique com o Botão Direito (Apenas para Alternar a Reserva)
     card.addEventListener('contextmenu', function(e) {
         e.preventDefault();
         if (!e.target.closest('.fig-controles')) {

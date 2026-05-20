@@ -1,6 +1,6 @@
 <?php
 $isLocal = in_array($_SERVER['HTTP_HOST'] ?? '', [
-    'ifc.local', 'localhost', '127.0.0.1', '192.168.15.9'
+    'ifc.local', 'localhost', '127.0.0.1', '192.168.15.12'
 ]);
 if ($isLocal) {
     // Ambiente local
