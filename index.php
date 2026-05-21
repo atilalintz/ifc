@@ -29,6 +29,7 @@ $paginas = [
     'trocas'        => 'pages/trocas.php',
     'scanner'       => 'pages/scanner.php',
     'perfil'        => 'pages/perfil.php',
+    'parceiro'      => 'pages/parceiro.php',
     'auth/login'    => 'auth/login.php',
     'auth/registro' => 'auth/registro.php',
     'auth/callback' => 'auth/callback.php',

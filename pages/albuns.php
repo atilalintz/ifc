@@ -11,7 +11,7 @@ $t       = TBL;
 // CRIAR ÁLBUM
 // ─────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['nome'])) {
-    $id   = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+    $id = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
         mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff),
         mt_rand(0, 0x0fff) | 0x4000, mt_rand(0, 0x3fff) | 0x8000,
         mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff));
@@ -24,8 +24,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['nome'])) {
         VALUES (:id, :uid, :nome, :slug)
     ")->execute([':id' => $id, ':uid' => $usuario['id'], ':nome' => $nome, ':slug' => $slug]);
 
-    // Herda repetidas de múltiplos álbuns?
-    $albumOrigens = $_POST['album_origens'] ?? [];
+    // Opções de herança
+    $incluirRepetidas  = !empty($_POST['incluir_repetidas']);
+    $incluirBloqueadas = !empty($_POST['incluir_bloqueadas']);
+    $albumOrigens      = $_POST['album_origens'] ?? [];
+
     if (!empty($albumOrigens)) {
         $origensValidas = [];
         foreach ($albumOrigens as $albumOrigem) {
@@ -36,83 +39,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['nome'])) {
 
         if (!empty($origensValidas)) {
             $placeholders = implode(',', array_fill(0, count($origensValidas), '?'));
+
+            // ── Monta query base ──────────────────────────────────────────
+            // Sempre pega repetidas (quantidade >= 2)
+            // Se NÃO incluir bloqueadas: exclui as que têm quantidade_bloqueada > 0
+            $filtroBloqueadas = $incluirBloqueadas ? '' : 'AND quantidade_bloqueada = 0';
+
             $stmt = $db->prepare("
-                SELECT figurinha_id, album_id, id, quantidade
+                SELECT figurinha_id, album_id, id, quantidade, quantidade_bloqueada
                 FROM {$t}inventario
-                WHERE album_id IN ($placeholders) AND quantidade >= 2
+                WHERE album_id IN ($placeholders)
+                  AND quantidade >= 2
+                  $filtroBloqueadas
                 ORDER BY quantidade DESC
             ");
             $stmt->execute($origensValidas);
             $todasRepetidas = $stmt->fetchAll();
 
+            // Agrupa por figurinha para escolher a melhor origem (round-robin)
             $porFigurinha = [];
-            $roundRobin   = [];
-
             foreach ($todasRepetidas as $rep) {
-                $fid = $rep['figurinha_id'];
-                if (!isset($porFigurinha[$fid])) {
-                    $porFigurinha[$fid] = [];
-                }
-                $porFigurinha[$fid][] = $rep;
+                $porFigurinha[$rep['figurinha_id']][] = $rep;
             }
 
+            $cedidas = [];
+
             foreach ($porFigurinha as $fid => $registros) {
-	    // Inicializa contador global
-		if (!isset($cedidas)) {
-		    $cedidas = [];
-		}
+                // Ordena por quem menos cedeu (round-robin entre origens)
+                usort($registros, function($a, $b) use (&$cedidas) {
+                    return ($cedidas[$a['album_id']] ?? 0) <=> ($cedidas[$b['album_id']] ?? 0);
+                });
 
-		// Ordena por quem menos cedeu
-		usort($registros, function($a, $b) use (&$cedidas) {
+                $melhor = $registros[0];
 
-		    $ca = $cedidas[$a['album_id']] ?? 0;
-		    $cb = $cedidas[$b['album_id']] ?? 0;
+                // ── Calcula quanto transferir ─────────────────────────────
+                if ($incluirRepetidas) {
+                    // Passa tudo menos 1 (origem fica com 1)
+                    $qtdHerdar = $melhor['quantidade'] - 1;
+                } else {
+                    // Passa só 1 (comportamento padrão)
+                    $qtdHerdar = 1;
+                }
 
-		    return $ca <=> $cb;
-		});
+                if ($qtdHerdar <= 0) continue;
 
-		$melhor = $registros[0];
+                // Insere no novo álbum
+                $db->prepare("
+                    INSERT INTO {$t}inventario
+                        (id, album_id, usuario_id, figurinha_id, quantidade)
+                    VALUES (UUID(), :aid, :uid, :fid, :qtd)
+                    ON DUPLICATE KEY UPDATE quantidade = quantidade + :qtd2
+                ")->execute([
+                    ':aid'  => $id,
+                    ':uid'  => $usuario['id'],
+                    ':fid'  => $fid,
+                    ':qtd'  => $qtdHerdar,
+                    ':qtd2' => $qtdHerdar,
+                ]);
 
-		// Marca que esse álbum cedeu 1
-		$cedidas[$melhor['album_id']] =
-		    ($cedidas[$melhor['album_id']] ?? 0) + 1;
-	    // HERDA APENAS 1 REPETIDA
-	    $qtdHerdar = 1;
-	    // ADICIONA NO NOVO ÁLBUM
-	    $db->prepare("
-		INSERT INTO {$t}inventario
-		(id, album_id, usuario_id, figurinha_id, quantidade)
-		VALUES (UUID(), :aid, :uid, :fid, :qtd)
+                // Remove da origem
+                $db->prepare("
+                    UPDATE {$t}inventario
+                    SET quantidade = quantidade - :qtd
+                    WHERE id = :id
+                ")->execute([':qtd' => $qtdHerdar, ':id' => $melhor['id']]);
 
-		ON DUPLICATE KEY UPDATE
-		    quantidade = quantidade + :qtd2
-	    ")->execute([
-		':aid'  => $id,
-		':uid'  => $usuario['id'],
-		':fid'  => $fid,
-		':qtd'  => $qtdHerdar,
-		':qtd2' => $qtdHerdar,
-	    ]);
-	    // REMOVE APENAS 1 DO ÁLBUM ORIGEM
-	    $db->prepare("
-		UPDATE {$t}inventario
-		SET quantidade = quantidade - 1
-		WHERE id = :id
-	    ")->execute([
-		':id' => $melhor['id']
-	    ]);
-	    recalcularAlbum(
-		$db,
-		$t,
-		$melhor['album_id'],
-		$usuario['id']
-	    );
-	}
+                $cedidas[$melhor['album_id']] = ($cedidas[$melhor['album_id']] ?? 0) + 1;
+
+                recalcularAlbum($db, $t, $melhor['album_id'], $usuario['id']);
+            }
         }
     }
 
     recalcularAlbum($db, $t, $id, $usuario['id']);
-
     header('Location: /albuns');
     exit;
 }
@@ -152,7 +151,10 @@ layoutInicio('Meus Álbuns');
                         Repetidas: <?= $album['total_repetidas'] ?>
                     </p>
                 </a>
-                <button class="btn-deletar" title="Deletar álbum" onclick="confirmarDeletar('<?= $album['id'] ?>', '<?= htmlspecialchars($album['nome'], ENT_QUOTES) ?>')">🗑️</button>
+                <button class="btn-deletar" title="Deletar álbum"
+                        onclick="confirmarDeletar('<?= $album['id'] ?>', '<?= htmlspecialchars($album['nome'], ENT_QUOTES) ?>')">
+                    🗑️
+                </button>
             </div>
         <?php endforeach; ?>
     </div>
@@ -166,66 +168,61 @@ layoutInicio('Meus Álbuns');
                required maxlength="20">
 
         <?php
-	$temRepetidas = array_filter(
-	    $albuns,
-	    fn($a) => (int)$a['total_repetidas'] > 0
-	);
-	?>
+        $temRepetidas = array_filter($albuns, fn($a) => (int)$a['total_repetidas'] > 0);
+        ?>
 
-	<div class="form-herdar">
+        <div class="form-herdar">
+            <label class="checkbox-label">
+                <input type="checkbox" id="chk-herdar" onchange="toggleHerdar(this)">
+                Herdar repetidas de outros álbuns
+            </label>
 
-	    <label class="checkbox-label">
-		<input
-		    type="checkbox"
-		    id="chk-herdar"
-		    onchange="toggleHerdar(this)"
-		>
-		Herdar repetidas de outros álbuns
-	    </label>
+            <div id="lista-origens" class="lista-origens" style="display:none">
 
-	    <div
-		id="lista-origens"
-		class="lista-origens"
-		style="display:none;"
-	    >
+                <!-- Opções de o que incluir -->
+                <div class="herdar-opcoes">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="incluir_repetidas" id="chk-repetidas">
+                        Incluir todas as repetidas
+                        <span style="color:#888;font-size:.8rem">
+                            (origem fica com 1 de cada)
+                        </span>
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="incluir_bloqueadas" id="chk-bloqueadas">
+                        Incluir bloqueadas
+                        <span style="color:#888;font-size:.8rem">
+                            (transfere 1 de cada bloqueada)
+                        </span>
+                    </label>
+                </div>
 
-		<?php if (!empty($temRepetidas)): ?>
+                <div class="herdar-divisor"></div>
 
-		    <?php foreach ($temRepetidas as $a): ?>
+                <!-- Lista de álbuns origem -->
+                <?php if (!empty($temRepetidas)): ?>
+                    <?php foreach ($temRepetidas as $a): ?>
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="album_origens[]"
+                                   value="<?= htmlspecialchars($a['id']) ?>">
+                            <?= htmlspecialchars($a['nome']) ?>
+                            <span style="color:#888;font-size:.8rem">
+                                (<?= (int)$a['total_repetidas'] ?> repetidas)
+                            </span>
+                        </label>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <p style="font-size:.85rem;color:#888;">
+                        Nenhum álbum com repetidas no momento.
+                    </p>
+                <?php endif; ?>
 
-		        <label class="checkbox-label">
+            </div>
+        </div>
 
-		            <input
-		                type="checkbox"
-		                name="album_origens[]"
-		                value="<?= htmlspecialchars($a['id']) ?>"
-		            >
-
-		            <?= htmlspecialchars($a['nome']) ?>
-
-		            <span style="color:#888;font-size:.8rem">
-		                (<?= (int)$a['total_repetidas'] ?> repetidas)
-		            </span>
-
-		        </label>
-
-		    <?php endforeach; ?>
-
-		<?php else: ?>
-
-		    <p style="font-size:.85rem;color:#888;">
-		        Nenhum álbum com repetidas no momento.
-		    </p>
-
-		<?php endif; ?>
-
-	    </div>
-
-	</div>
-
-	<button type="submit" class="btn btn-primary" style="margin-top:.75rem">
-	    Criar álbum
-	</button>
+        <button type="submit" class="btn btn-primary" style="margin-top:.75rem">
+            Criar álbum
+        </button>
     </form>
 </div>
 
@@ -233,7 +230,6 @@ layoutInicio('Meus Álbuns');
 <div id="modal-deletar" class="modal-overlay" style="display:none">
     <div class="modal-box">
 
-        <!-- Etapa 1: escolha da ação -->
         <div id="modal-etapa1">
             <h3 id="modal-titulo">Deletar álbum</h3>
             <p style="margin:.75rem 0;font-size:.9rem;color:#555;">
@@ -255,28 +251,20 @@ layoutInicio('Meus Álbuns');
             </div>
         </div>
 
-        <!-- Etapa 2: escolha dos álbuns para sobras -->
-	<div id="modal-etapa2" style="display:none">
-	    <h3>Para onde vão as sobras?</h3>
-	    <p style="margin:.5rem 0 1rem;font-size:.85rem;color:#666;">
-		Você pode selecionar múltiplos álbuns.
-		<br><br>
-		Se nenhum for marcado,
-		as sobras irão automaticamente
-		para o álbum com mais repetidas.
-	    </p>
-	    <div id="modal-lista-albuns" class="modal-opcoes"></div>
-	    <div class="modal-acoes">
-		<button class="btn btn-primary" onclick="confirmarDistribuir()">
-		    Confirmar
-		</button>
-		<button class="btn btn-sm" onclick="voltarModal()">
-		    ← Voltar
-		</button>
-	    </div>
-	</div>
+        <div id="modal-etapa2" style="display:none">
+            <h3>Para onde vão as sobras?</h3>
+            <p style="margin:.5rem 0 1rem;font-size:.85rem;color:#666;">
+                Você pode selecionar múltiplos álbuns.<br><br>
+                Se nenhum for marcado, as sobras irão automaticamente
+                para o álbum com mais repetidas.
+            </p>
+            <div id="modal-lista-albuns" class="modal-opcoes"></div>
+            <div class="modal-acoes">
+                <button class="btn btn-primary" onclick="confirmarDistribuir()">Confirmar</button>
+                <button class="btn btn-sm" onclick="voltarModal()">← Voltar</button>
+            </div>
+        </div>
 
-        <!-- Etapa 3: processando -->
         <div id="modal-etapa3" style="display:none">
             <h3>Processando...</h3>
             <div class="modal-progresso">
@@ -287,7 +275,6 @@ layoutInicio('Meus Álbuns');
             </div>
         </div>
 
-        <!-- Etapa 4: concluído -->
         <div id="modal-etapa4" style="display:none">
             <h3 style="color:var(--verde)">✓ Concluído!</h3>
             <div id="modal-resultado" style="margin:1rem 0;font-size:.9rem;"></div>
@@ -298,6 +285,24 @@ layoutInicio('Meus Álbuns');
 
     </div>
 </div>
+
+<style>
+.herdar-opcoes {
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+    padding: .5rem .75rem;
+    background: #f0f4ff;
+    border-radius: 8px;
+    border: 1px solid #c7d2fe;
+    margin-bottom: .5rem;
+}
+.herdar-divisor {
+    height: 1px;
+    background: #e0e0e0;
+    margin: .4rem 0;
+}
+</style>
 
 <script>
 let modalAlbumId   = '';
@@ -333,7 +338,7 @@ async function avancarModal() {
     if (acao === 'descartar') {
         mostrarEtapa(3);
         document.getElementById('modal-progresso-msg').textContent = 'Descartando álbum...';
-	
+
         const resp = await fetch('/api/albuns', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -347,7 +352,6 @@ async function avancarModal() {
         return;
     }
 
-    // Distribuir — busca preview dos álbuns disponíveis
     mostrarEtapa(3);
     document.getElementById('modal-progresso-msg').textContent = 'Carregando álbuns...';
 
@@ -358,26 +362,18 @@ async function avancarModal() {
     });
     const data = await resp.json();
 
-    // Monta lista de álbuns para sobras
     const lista = document.getElementById('modal-lista-albuns');
     lista.innerHTML = '';
-    data.albuns.forEach((a, i) => {
-	lista.innerHTML += `
-	    <label class="checkbox-label">
-		<input
-		    type="checkbox"
-		    name="album_sobras[]"
-		    class="album-destino"
-		    value="${a.id}"
-		>
-
-		${a.nome}
-
-		<span style="color:#888;font-size:.8rem">
-		    (${a.total_repetidas} repetidas)
-		</span>
-	    </label>
-	`;
+    data.albuns.forEach(a => {
+        lista.innerHTML += `
+            <label class="checkbox-label">
+                <input type="checkbox" name="album_sobras[]"
+                       class="album-destino" value="${a.id}">
+                ${a.nome}
+                <span style="color:#888;font-size:.8rem">
+                    (${a.total_repetidas} repetidas)
+                </span>
+            </label>`;
     });
     mostrarEtapa(2);
 }
@@ -387,18 +383,10 @@ function voltarModal() { mostrarEtapa(1); }
 async function confirmarDistribuir() {
     const albumSobrasSelecionados = [...document.querySelectorAll('input[name="album_sobras[]"]:checked')]
         .map(el => el.value);
-    const albumSobras =
-    encodeURIComponent(
-        albumSobrasSelecionados.join(',')
-    );
-    
-    console.log(albumSobrasSelecionados);
-    console.log(albumSobras);
-    
+    const albumSobras = encodeURIComponent(albumSobrasSelecionados.join(','));
+
     mostrarEtapa(3);
 
-    // Animação do spinner
-    let dots = 0;
     const msgs = [
         'Distribuindo figurinhas...',
         'Verificando álbuns...',
@@ -414,15 +402,11 @@ async function confirmarDistribuir() {
     const resp = await fetch('/api/albuns', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body:
-        `acao=distribuir` +
-        `&album_id=${encodeURIComponent(modalAlbumId)}` +
-        `&album_sobras=${albumSobras}`
+        body: `acao=distribuir&album_id=${encodeURIComponent(modalAlbumId)}&album_sobras=${albumSobras}`
     });
     const data = await resp.json();
 
     clearInterval(intervalo);
-
     mostrarEtapa(4);
     document.getElementById('modal-resultado').innerHTML = `
         <p>✓ <strong>${data.distribuidas}</strong> figurinhas distribuídas entre os álbuns</p>
@@ -434,9 +418,6 @@ async function confirmarDistribuir() {
 <?php layoutFim(); ?>
 
 <?php
-// ─────────────────────────────────────────────
-// Helper: recalcula estatísticas do álbum
-// ─────────────────────────────────────────────
 function recalcularAlbum(PDO $db, string $t, string $albumId, string $usuarioId): void {
     $stmt = $db->prepare("SELECT COUNT(*) FROM {$t}figurinhas");
     $stmt->execute();
