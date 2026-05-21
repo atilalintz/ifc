@@ -17,6 +17,7 @@ $apis = [
     'api/csv'        => 'api/csv.php',
     'api/scanner'    => 'api/scanner.php',
     'api/albuns'     => 'api/albuns.php',
+    'api/trocas'     => 'api/trocas.php',
 ];
 
 $paginas = [
@@ -24,6 +25,7 @@ $paginas = [
  'inventario' => 'pages/inventario.php',
  'trocas' => 'pages/trocas.php',
  'scanner' => 'pages/scanner.php',
+ 'perfil' => 'pages/perfil.php',
  'auth/login' => 'auth/login.php',
  'auth/callback' => 'auth/callback.php',
  'auth/logout' => 'auth/logout.php',
