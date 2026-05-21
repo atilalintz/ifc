@@ -26,16 +26,20 @@ function layoutInicio(string $titulo): void {
             </nav>
             <div class="header-usuario">
                 <?php if ($usuario): ?>
-                    <?php if (!empty($usuario['avatar'])): ?>
-                        <img src="<?= htmlspecialchars($usuario['avatar']) ?>"
-                             alt="<?= htmlspecialchars($usuario['nome']) ?>"
-                             class="avatar">
-                    <?php else: ?>
-                        <span class="avatar-inicial">
-                            <?= mb_strtoupper(mb_substr($usuario['nome'], 0, 1)) ?>
-                        </span>
-                    <?php endif; ?>
-                    <span class="usuario-nome"><?= htmlspecialchars(explode(' ', $usuario['nome'])[0]) ?></span>
+                    <a href="<?= $appPath ?>/perfil" class="avatar-link" title="Meu perfil">
+                        <?php if (!empty($usuario['avatar'])): ?>
+                            <img src="<?= htmlspecialchars($usuario['avatar']) ?>"
+                                 alt="<?= htmlspecialchars($usuario['nome']) ?>"
+                                 class="avatar">
+                        <?php else: ?>
+                            <span class="avatar-inicial">
+                                <?= mb_strtoupper(mb_substr($usuario['nome'], 0, 1)) ?>
+                            </span>
+                        <?php endif; ?>
+                    </a>
+                    <a href="<?= $appPath ?>/perfil" class="usuario-nome" title="Meu perfil">
+                        <?= htmlspecialchars(explode(' ', $usuario['nome'])[0]) ?>
+                    </a>
                     <a href="<?= $appPath ?>/auth/logout" class="btn-logout" title="Sair">⏻</a>
                 <?php endif; ?>
             </div>

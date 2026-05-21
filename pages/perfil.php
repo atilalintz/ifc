@@ -16,7 +16,8 @@ $stmt = $db->prepare("
 $stmt->execute([':id' => $usuario['id']]);
 $perfil = $stmt->fetch();
 
-$sucesso = $erro = '';
+$sucesso    = $erro = '';
+$usuarioNovo = !empty($_GET['novo']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $contatoTipo  = $_POST['contato_tipo']  ?? '';
@@ -52,6 +53,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $perfil['cidade']        = $cidade;
         $perfil['estado']        = $estado;
         $sucesso = 'Perfil atualizado com sucesso!';
+
+        // Novo usuário → vai direto para os álbuns após salvar
+        if ($usuarioNovo) {
+            header('Location: /albuns');
+            exit;
+        }
     }
 }
 
@@ -64,6 +71,13 @@ layoutInicio('Meu Perfil');
         <h1 class="page-title" style="margin-bottom:.25rem">Meu Perfil</h1>
     </div>
 </div>
+
+<?php if ($usuarioNovo): ?>
+<div class="alerta alerta-boas-vindas">
+    🎉 Bem-vindo ao IFC, <strong><?= htmlspecialchars($perfil['nome']) ?></strong>!<br>
+    Complete seu perfil para aparecer nos matches de troca com outros usuários.
+</div>
+<?php endif; ?>
 
 <div class="perfil-container">
 
@@ -137,7 +151,7 @@ layoutInicio('Meu Perfil');
             </fieldset>
 
             <button type="submit" class="btn-sm btn-todas-inc" style="margin-top:1rem">
-                💾 Salvar alterações
+                💾 <?= $usuarioNovo ? 'Salvar e começar' : 'Salvar alterações' ?>
             </button>
         </form>
     </div>
@@ -181,7 +195,10 @@ layoutInicio('Meu Perfil');
 .perfil-hint { margin: 0; font-size: .8rem; color: #888; }
 
 .alerta { padding: .6rem .9rem; border-radius: 8px; margin-bottom: .75rem; font-size: .88rem; }
-.alerta-ok  { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+.alerta-boas-vindas {
+    background: #eff6ff; color: #1d4ed8;
+    border: 1px solid #bfdbfe; margin-bottom: 1.25rem;
+}
 .alerta-erro { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
 </style>
 
