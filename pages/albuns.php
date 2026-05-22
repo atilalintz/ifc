@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['nome'])) {
             // ── Monta query base ──────────────────────────────────────────
             // Sempre pega repetidas (quantidade >= 2)
             // Se NÃO incluir bloqueadas: exclui as que têm quantidade_bloqueada > 0
-            $filtroBloqueadas = $incluirBloqueadas ? '' : 'AND quantidade_bloqueada = 0';
+            $filtroBloqueadas = $incluirBloqueadas ? '' : "AND status_troca != 'bloqueada'";
 
             $stmt = $db->prepare("
                 SELECT figurinha_id, album_id, id, quantidade, quantidade_bloqueada

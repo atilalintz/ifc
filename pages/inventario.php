@@ -13,33 +13,35 @@ if (!$albumId) { header('Location: /albuns'); exit; }
 
 $stmt = $db->prepare("
     SELECT id, nome, percentual_conclusao, total_faltantes, total_repetidas
-    FROM ifc_albuns WHERE id = :id AND usuario_id = :uid AND ativo = 1
+    FROM " . tbl('albuns') . " WHERE id = :id AND usuario_id = :uid AND ativo = 1
 ");
 $stmt->execute([':id' => $albumId, ':uid' => $usuario['id']]);
 $album = $stmt->fetch();
 if (!$album) { header('Location: /albuns'); exit; }
 
 $stmt = $db->prepare("
- SELECT
- g.codigo AS grupo_codigo,
- g.nome AS grupo_nome,
- g.ordem AS grupo_ordem,
- s.id AS selecao_id,
- s.sigla AS selecao_sigla,
- s.nome AS selecao_nome,
- s.bandeira_url,
- f.id AS figurinha_id,
- f.codigo AS figurinha_codigo,
- f.numero,
- f.tipo,
- COALESCE(i.quantidade, 0) AS quantidade,
- COALESCE(i.quantidade_bloqueada, 0) AS reservada
- FROM " . tbl('figurinhas') . " f
- JOIN " . tbl('selecoes') . " s ON s.id = f.selecao_id
- LEFT JOIN " . tbl('grupos') . " g ON g.id = s.grupo_id
- LEFT JOIN " . tbl('inventario') . " i
- ON i.figurinha_id = f.id AND i.album_id = :aid
- ORDER BY COALESCE(g.ordem, -1), s.sigla, f.numero
+    SELECT
+        g.codigo AS grupo_codigo,
+        g.nome   AS grupo_nome,
+        g.ordem  AS grupo_ordem,
+        s.id     AS selecao_id,
+        s.sigla  AS selecao_sigla,
+        s.nome   AS selecao_nome,
+        s.bandeira_url,
+        f.id     AS figurinha_id,
+        f.codigo AS figurinha_codigo,
+        f.numero,
+        f.tipo,
+        COALESCE(i.quantidade, 0)          AS quantidade,
+        COALESCE(i.quantidade_bloqueada, 0) AS reservada,
+        COALESCE(i.status_troca, 'livre')   AS status_troca,
+        i.valor_troca
+    FROM " . tbl('figurinhas') . " f
+    JOIN " . tbl('selecoes')   . " s ON s.id = f.selecao_id
+    LEFT JOIN " . tbl('grupos'). " g ON g.id = s.grupo_id
+    LEFT JOIN " . tbl('inventario') . " i
+        ON i.figurinha_id = f.id AND i.album_id = :aid
+    ORDER BY COALESCE(g.ordem, -1), s.sigla, f.numero
 ");
 $stmt->execute([':aid' => $albumId]);
 $rows = $stmt->fetchAll();
@@ -64,12 +66,14 @@ foreach ($rows as $row) {
         ];
     }
     $estrutura[$gKey]['selecoes'][$sKey]['figurinhas'][] = [
-        'id'     => $row['figurinha_id'],
-        'codigo' => $row['figurinha_codigo'],
-        'numero' => $row['numero'],
-        'tipo'   => $row['tipo'],
-        'qtd'    => (int) $row['quantidade'],
-        'reservada' => (int) $row['reservada'],
+        'id'          => $row['figurinha_id'],
+        'codigo'      => $row['figurinha_codigo'],
+        'numero'      => $row['numero'],
+        'tipo'        => $row['tipo'],
+        'qtd'         => (int) $row['quantidade'],
+        'reservada'   => (int) $row['reservada'],
+        'status_troca'=> $row['status_troca'],
+        'valor_troca' => $row['valor_troca'],
     ];
     $estrutura[$gKey]['selecoes'][$sKey]['total']++;
     if ((int)$row['quantidade'] > 0) {
@@ -93,10 +97,10 @@ layoutInicio('Inventário — ' . $album['nome']);
         <span>Repetidas: <strong id="stat-rep"><?= $album['total_repetidas'] ?></strong></span>
     </div>
 </div>
+
 <div class="acoes-barra">
     <button class="btn-sm btn-todas-inc" onclick="atualizarTodas('incrementar')">+1 em todas</button>
     <button class="btn-sm btn-todas-dec" onclick="atualizarTodas('decrementar')">−1 em todas</button>
-
     <div class="dropdown">
         <button class="btn-sm" onclick="toggleDropdown()">⬆⬇ Exp/Imp ▾</button>
         <div class="dropdown-menu" id="dropdown-menu">
@@ -115,24 +119,40 @@ layoutInicio('Inventário — ' . $album['nome']);
 
 <!-- Filtros -->
 <div class="filtros-sticky">
+
+    <!-- Linha 1: busca -->
     <div class="filtros-barra">
-    <input type="text" id="busca" placeholder="Buscar código ou país...">
-    <select id="filtro-status">
-        <option value="">Todas</option>
-        <option value="faltante">Faltantes</option>
-        <option value="tenho">Tenho (≥1)</option>
-        <option value="repetida">Repetidas (≥2)</option>
-    </select>
-    <label class="checkbox-label">
-        <input type="checkbox" id="mostrar-completas">
-        Mostrar completas
-    </label>
-</div>
-    <!-- Pílulas de grupo -->
+        <input type="text" id="busca" placeholder="Buscar código ou país...">
+    </div>
+
+    <!-- Linha 2: selects de quantidade e status -->
+    <div class="filtros-barra">
+        <select id="filtro-qtd">
+            <option value="">Todas qtd.</option>
+            <option value="faltante">Faltantes (0)</option>
+            <option value="tenho1">Tenho 1</option>
+            <option value="tenho2">Tenho 2+</option>
+        </select>
+        <select id="filtro-troca">
+            <option value="">Qualquer status</option>
+            <option value="livre">🟢 Livre</option>
+            <option value="troca">🔄 Troca</option>
+            <option value="venda">💰 Venda</option>
+            <option value="bloqueada">🔒 Bloqueada</option>
+        </select>
+    </div>
+
+    <!-- Linha 3: pílula de visibilidade (cicla 3 estados) + grupos com wrap natural -->
     <div class="grupos-pilulas">
-        <button class="pilula ativa" data-grupo="" onclick="filtrarGrupo(this)">Todos</button>
+        <button class="pilula pilula-visib pilula-visib--incompletas"
+                id="pilula-visib"
+                data-estado="incompletas"
+                onclick="ciclarVisib()">
+            🔵 Incompletas
+        </button>
         <?php foreach ($estrutura as $gKey => $grupo): ?>
-            <button class="pilula" data-grupo="<?= htmlspecialchars($gKey) ?>" onclick="filtrarGrupo(this)">
+            <button class="pilula" data-grupo="<?= htmlspecialchars($gKey) ?>"
+                    onclick="filtrarGrupo(this)">
                 <?= htmlspecialchars($gKey === 'especial' ? 'Esp.' : $gKey) ?>
             </button>
         <?php endforeach; ?>
@@ -144,13 +164,14 @@ layoutInicio('Inventário — ' . $album['nome']);
 <?php foreach ($estrutura as $grupoKey => $grupo): ?>
     <?php foreach ($grupo['selecoes'] as $sigla => $selecao):
         $pct = $selecao['total'] > 0 ? round(($selecao['tenho'] / $selecao['total']) * 100) : 0;
+        $completa = $selecao['tenho'] === $selecao['total'];
     ?>
-        <div class="selecao-row"
+        <div class="selecao-row <?= $completa ? 'selecao-completa' : '' ?>"
              data-grupo="<?= htmlspecialchars($grupoKey) ?>"
              data-sigla="<?= htmlspecialchars($sigla) ?>"
-             data-nome="<?= htmlspecialchars(mb_strtolower($selecao['nome'])) ?>">
+             data-nome="<?= htmlspecialchars(mb_strtolower($selecao['nome'])) ?>"
+             data-completa="<?= $completa ? '1' : '0' ?>">
 
-            <!-- Cabeçalho da seleção (clicável) -->
             <div class="selecao-cabecalho" onclick="toggleSelecao(this)">
                 <div class="selecao-info">
                     <img src="<?= htmlspecialchars($selecao['bandeira']) ?>"
@@ -159,7 +180,9 @@ layoutInicio('Inventário — ' . $album['nome']);
                          onerror="this.style.display='none'">
                     <span class="selecao-sigla-badge"><?= htmlspecialchars($sigla) ?></span>
                     <span class="selecao-nome"><?= htmlspecialchars($selecao['nome']) ?></span>
-                    <span class="selecao-grupo-badge"><?= htmlspecialchars($grupoKey === 'especial' ? 'Esp.' : 'Grupo '.$grupoKey) ?></span>
+                    <span class="selecao-grupo-badge">
+                        <?= htmlspecialchars($grupoKey === 'especial' ? 'Esp.' : 'Grupo '.$grupoKey) ?>
+                    </span>
                 </div>
                 <div class="selecao-progresso-wrap">
                     <span class="selecao-contagem" id="cont-<?= $selecao['id'] ?>">
@@ -173,31 +196,49 @@ layoutInicio('Inventário — ' . $album['nome']);
                 </div>
             </div>
 
-            <!-- Figurinhas (recolhidas por padrão) -->
             <div class="selecao-figurinhas">
                 <div class="figurinhas-grid">
-                    <?php foreach ($selecao['figurinhas'] as $fig): ?>
-			    <div
-				class="figurinha-card <?= $fig['qtd'] > 0 ? 'tem' : '' ?> <?= $fig['qtd'] > 1 ? 'repetida' : '' ?> <?= $fig['reservada'] > 0 ? 'selecionada' : '' ?>"
-				id="fig-<?= $fig['id'] ?>"
-				data-codigo="<?= htmlspecialchars($fig['codigo']) ?>"
-				data-qtd="<?= $fig['qtd'] ?>"
-				data-selecao="<?= $selecao['id'] ?>"
-				data-total="<?= $selecao['total'] ?>"
-			    >
-			    <span class="fig-codigo"><?= htmlspecialchars($fig['codigo']) ?></span>
-			    <div class="fig-controles">
-				<div class="fig-metade fig-metade-dec"
-				     onclick="event.stopPropagation(); atualizar('<?= $fig['id'] ?>', '<?= $albumId ?>', 'decrementar')">
-				    <span class="fig-sinal">−</span>
-				</div>
-				<div class="fig-qtd" id="qtd-<?= $fig['id'] ?>"><?= $fig['qtd'] ?></div>
-				<div class="fig-metade fig-metade-inc"
-				     onclick="event.stopPropagation(); atualizar('<?= $fig['id'] ?>', '<?= $albumId ?>', 'incrementar')">
-				    <span class="fig-sinal">+</span>
-				</div>
-			    </div>
-			</div>
+                    <?php foreach ($selecao['figurinhas'] as $fig):
+                        $statusEmoji = [
+                            'livre'     => '🟢',
+                            'troca'     => '🔄',
+                            'venda'     => '💰',
+                            'bloqueada' => '🔒',
+                        ];
+                        $emoji = $fig['qtd'] > 0
+                            ? ($statusEmoji[$fig['status_troca']] ?? '🟢')
+                            : '';
+                    ?>
+                        <div class="figurinha-card <?= $fig['qtd'] > 0 ? 'tem' : '' ?> <?= $fig['qtd'] > 1 ? 'repetida' : '' ?>"
+                             id="fig-<?= $fig['id'] ?>"
+                             data-codigo="<?= htmlspecialchars($fig['codigo']) ?>"
+                             data-qtd="<?= $fig['qtd'] ?>"
+                             data-status="<?= htmlspecialchars($fig['status_troca']) ?>"
+                             data-selecao="<?= $selecao['id'] ?>"
+                             data-total="<?= $selecao['total'] ?>"
+                             style="position:relative">
+                            <span class="fig-codigo"><?= htmlspecialchars($fig['codigo']) ?></span>
+                            <div class="fig-controles">
+                                <div class="fig-metade fig-metade-dec"
+                                     onclick="event.stopPropagation(); atualizar('<?= $fig['id'] ?>', '<?= $albumId ?>', 'decrementar')">
+                                    <span class="fig-sinal">−</span>
+                                </div>
+                                <div class="fig-qtd" id="qtd-<?= $fig['id'] ?>"><?= $fig['qtd'] ?></div>
+                                <div class="fig-metade fig-metade-inc"
+                                     onclick="event.stopPropagation(); atualizar('<?= $fig['id'] ?>', '<?= $albumId ?>', 'incrementar')">
+                                    <span class="fig-sinal">+</span>
+                                </div>
+                            </div>
+                            <?php if ($fig['qtd'] > 0): ?>
+                                <div class="fig-status-badge" id="badge-<?= $fig['id'] ?>"
+                                     data-status="<?= htmlspecialchars($fig['status_troca']) ?>">
+                                    <?= $emoji ?>
+                                </div>
+                            <?php else: ?>
+                                <div class="fig-status-badge" id="badge-<?= $fig['id'] ?>"
+                                     data-status="livre" style="display:none"></div>
+                            <?php endif; ?>
+                        </div>
                     <?php endforeach; ?>
                 </div>
             </div>
@@ -206,8 +247,93 @@ layoutInicio('Inventário — ' . $album['nome']);
 <?php endforeach; ?>
 </div>
 
+<!-- Modal de status de troca -->
+<div id="modal-status" class="modal-overlay" style="display:none" onclick="fecharModalStatus(event)">
+    <div class="modal-box">
+        <div class="modal-titulo" id="modal-status-titulo">Figurinha</div>
+        <div class="modal-opcoes">
+            <button class="modal-opcao" onclick="definirStatus('livre')">🟢 Livre (disponível para troca)</button>
+            <button class="modal-opcao" onclick="definirStatus('troca')">🔄 Quero trocar</button>
+            <button class="modal-opcao" onclick="definirStatus('venda')">💰 Quero vender</button>
+            <button class="modal-opcao" onclick="definirStatus('bloqueada')">🔒 Bloquear (não negociar)</button>
+        </div>
+        <div id="campo-valor" style="display:none;margin-top:.75rem">
+            <label style="font-size:.85rem;font-weight:600">Valor (R$):</label>
+            <input type="number" id="input-valor" min="0" step="0.50" placeholder="Ex: 5.00"
+                   style="width:100%;padding:.4rem;border-radius:6px;border:1px solid #ddd;margin-top:.3rem">
+        </div>
+        <div class="modal-rodape">
+            <button class="btn-sm btn-todas-inc" onclick="confirmarStatus()">✓ Confirmar</button>
+            <button class="btn-sm" onclick="document.getElementById('modal-status').style.display='none'">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Badge de status — canto superior direito com fundo escuro */
+.fig-status-badge {
+    position: absolute;
+    top: 2px;
+    right: 3px;
+    font-size: .62rem;
+    line-height: 1;
+    background: rgba(0,0,0,.55);
+    border-radius: 6px;
+    padding: 1px 3px;
+    pointer-events: none;
+}
+
+/* Pílula de visibilidade — 3 estados */
+.pilula-visib {
+    font-weight: 700;
+    border-color: #93c5fd;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+.pilula-visib.verde {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+    color: #16a34a;
+}
+.pilula-visib.cinza {
+    background: #f5f5f5;
+    border-color: #ddd;
+    color: #666;
+}
+
+/* Modal */
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; padding: 1rem;
+}
+.modal-box {
+    background: #fff; border-radius: 14px; padding: 1.5rem;
+    width: 100%; max-width: 360px; box-shadow: 0 8px 32px rgba(0,0,0,.18);
+}
+.modal-titulo { font-weight: 700; font-size: 1rem; margin-bottom: 1rem; }
+.modal-opcoes { display: flex; flex-direction: column; gap: .5rem; }
+.modal-opcao {
+    padding: .6rem .9rem; border-radius: 8px; border: 1px solid #e0e0e0;
+    background: #fafafa; text-align: left; font-size: .9rem; cursor: pointer;
+}
+.modal-opcao:hover { background: #f0f0f0; }
+.modal-rodape { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
+</style>
+
 <script>
-// ── Toggle seleção ──────────────────────────
+const ALBUM_ID = '<?= $albumId ?>';
+
+// ── Estado dos filtros ────────────────────────────────────────────────────────
+const filtros = {
+    busca: '',
+    qtd:   '',   // '' | 'faltante' | 'tenho1' | 'tenho2'
+    troca: '',   // '' | 'livre' | 'troca' | 'venda' | 'bloqueada'
+    grupo: '',
+    visib: 'incompletas', // 'incompletas' | 'completas' | 'todas'
+};
+
+// ── Toggle accordion (abre/fecha figurinhas da seleção) ──────────────────────
 function toggleSelecao(cabecalho) {
     const row  = cabecalho.closest('.selecao-row');
     const figs = row.querySelector('.selecao-figurinhas');
@@ -216,74 +342,98 @@ function toggleSelecao(cabecalho) {
     seta.style.transform = aberto ? 'rotate(180deg)' : '';
 }
 
-function expandirTudo() {
-    document.querySelectorAll('.selecao-row:not([style*="display: none"])').forEach(row => {
-        row.querySelector('.selecao-figurinhas').classList.add('aberto');
-        row.querySelector('.selecao-seta').style.transform = 'rotate(180deg)';
-    });
-}
-function recolherTudo() {
-    document.querySelectorAll('.selecao-figurinhas').forEach(f => f.classList.remove('aberto'));
-    document.querySelectorAll('.selecao-seta').forEach(s => s.style.transform = '');
-}
+// ── Pílula de visibilidade — cicla entre 3 estados ───────────────────────────
+const visibEstados = [
+    { key: 'incompletas', label: '🔵 Incompletas', cls: ''      },
+    { key: 'completas',   label: '🟢 Completas',   cls: 'verde' },
+    { key: 'todas',       label: '⚪ Todas',        cls: 'cinza' },
+];
+let visibIdx = 0; // começa em incompletas
 
-// ── Filtro por grupo (pílulas) ──────────────
-function filtrarGrupo(btn) {
-    document.querySelectorAll('.pilula').forEach(p => p.classList.remove('ativa'));
-    btn.classList.add('ativa');
+function ciclarVisib() {
+    visibIdx = (visibIdx + 1) % visibEstados.length;
+    const estado = visibEstados[visibIdx];
+    filtros.visib = estado.key;
+
+    const btn = document.getElementById('pilula-visib');
+    btn.textContent = estado.label;
+    btn.className   = 'pilula pilula-visib ' + estado.cls;
+
     aplicarFiltros();
 }
 
-// ── Filtros gerais ──────────────────────────
+// ── Filtro por grupo (pílulas) ────────────────────────────────────────────────
+function filtrarGrupo(btn) {
+    document.querySelectorAll('.pilula:not(.pilula-visib)').forEach(p => p.classList.remove('ativa'));
+    btn.classList.add('ativa');
+    filtros.grupo = btn.dataset.grupo;
+    aplicarFiltros();
+}
+
+// ── Aplicar todos os filtros ──────────────────────────────────────────────────
 function aplicarFiltros() {
-    const busca  = document.getElementById('busca').value.toLowerCase().trim();
-    const status = document.getElementById('filtro-status').value;
-    const mostrarCompletas = document.getElementById('mostrar-completas').checked;
-    const grupo  = document.querySelector('.pilula.ativa').dataset.grupo;
+    filtros.busca = document.getElementById('busca').value.toLowerCase().trim();
+    filtros.qtd   = document.getElementById('filtro-qtd').value;
+    filtros.troca = document.getElementById('filtro-troca').value;
 
     document.querySelectorAll('.selecao-row').forEach(row => {
-        const rowGrupo = row.dataset.grupo;
-        const rowNome  = row.dataset.nome;
-        const rowSigla = row.dataset.sigla.toLowerCase();
+        const rowGrupo   = row.dataset.grupo;
+        const rowNome    = row.dataset.nome;
+        const rowSigla   = row.dataset.sigla.toLowerCase();
+        const rowCompleta = row.dataset.completa === '1';
 
         // Filtro grupo
-        if (grupo && rowGrupo !== grupo) { row.style.display = 'none'; return; }
-        
-        // Oculta seleções completas por padrão
-	if (!mostrarCompletas) {
-	    const cards = [...row.querySelectorAll('.figurinha-card')];
-	    const temFaltante = cards.some(c => parseInt(c.dataset.qtd) === 0);
-	    if (!temFaltante) { row.style.display = 'none'; return; }
-	}
-
-        // Filtro busca por nome ou sigla
-        if (busca && !rowNome.includes(busca) && !rowSigla.includes(busca)) {
-            // Tenta busca por código de figurinha
-            const temCodigo = [...row.querySelectorAll('.figurinha-card')]
-                .some(c => c.dataset.codigo.toLowerCase().includes(busca));
-            if (!temCodigo) { row.style.display = 'none'; return; }
+        if (filtros.grupo && rowGrupo !== filtros.grupo) {
+            row.style.display = 'none'; return;
         }
 
-        row.style.display = '';
+        // Filtro visibilidade (pílula de 3 estados)
+        if (filtros.visib === 'incompletas' && rowCompleta) {
+            row.style.display = 'none'; return;
+        }
+        if (filtros.visib === 'completas' && !rowCompleta) {
+            row.style.display = 'none'; return;
+        }
+        // 'todas' → não filtra por completa/incompleta
 
-        // Filtro status — esconde/mostra cards individuais
+        // Busca por seleção
+        const buscaMatchSel = !filtros.busca
+            || rowNome.includes(filtros.busca)
+            || rowSigla.includes(filtros.busca);
+
+        // Filtra cards individuais
+        let algumVisivel = false;
         row.querySelectorAll('.figurinha-card').forEach(card => {
-            const qtd = parseInt(card.dataset.qtd);
-            const codigoMatch = !busca || card.dataset.codigo.toLowerCase().includes(busca)
-                || row.dataset.nome.includes(busca) || row.dataset.sigla.toLowerCase().includes(busca);
-            const statusMatch = !status
-                || (status === 'faltante' && qtd === 0)
-                || (status === 'tenho'    && qtd >= 1)
-                || (status === 'repetida' && qtd >= 2);
-            card.style.display = (codigoMatch && statusMatch) ? '' : 'none';
+            const qtd    = parseInt(card.dataset.qtd);
+            const status = card.dataset.status;
+            const codigo = card.dataset.codigo.toLowerCase();
+
+            const buscaOk = !filtros.busca
+                || buscaMatchSel
+                || codigo.includes(filtros.busca);
+
+            const qtdOk = !filtros.qtd
+                || (filtros.qtd === 'faltante' && qtd === 0)
+                || (filtros.qtd === 'tenho1'   && qtd === 1)
+                || (filtros.qtd === 'tenho2'   && qtd >= 2);
+
+            const trocaOk = !filtros.troca
+                || (qtd > 0 && status === filtros.troca);
+
+            const visivel = buscaOk && qtdOk && trocaOk;
+            card.style.display = visivel ? '' : 'none';
+            if (visivel) algumVisivel = true;
         });
+
+        row.style.display = algumVisivel ? '' : 'none';
     });
 }
 
 document.getElementById('busca').addEventListener('input', aplicarFiltros);
-document.getElementById('filtro-status').addEventListener('change', aplicarFiltros);
-document.getElementById('mostrar-completas').addEventListener('change', aplicarFiltros);
-// ── API ─────────────────────────────────────
+document.getElementById('filtro-qtd').addEventListener('change', aplicarFiltros);
+document.getElementById('filtro-troca').addEventListener('change', aplicarFiltros);
+
+// ── API inventário ────────────────────────────────────────────────────────────
 async function atualizar(figurinhaId, albumId, acao) {
     const resp = await fetch('/api/inventario', {
         method: 'POST',
@@ -292,12 +442,23 @@ async function atualizar(figurinhaId, albumId, acao) {
     });
     const data = await resp.json();
 
-    // Atualiza card
-    const card = document.getElementById(`fig-${figurinhaId}`);
+    const card  = document.getElementById(`fig-${figurinhaId}`);
+    const badge = document.getElementById(`badge-${figurinhaId}`);
+
     card.dataset.qtd = data.quantidade;
     document.getElementById(`qtd-${figurinhaId}`).textContent = data.quantidade;
     card.classList.toggle('tem',      data.quantidade > 0);
     card.classList.toggle('repetida', data.quantidade > 1);
+
+    // Mostra/oculta badge conforme quantidade
+    if (data.quantidade > 0) {
+        badge.style.display = '';
+    } else {
+        badge.style.display = 'none';
+        // Zera status quando vai a 0
+        card.dataset.status  = 'livre';
+        badge.dataset.status = 'livre';
+    }
 
     // Atualiza barra e contagem da seleção
     const selecaoId = card.dataset.selecao;
@@ -309,7 +470,13 @@ async function atualizar(figurinhaId, albumId, acao) {
     document.getElementById(`cont-${selecaoId}`).textContent = `${tenhoSel}/${totalSel}`;
     document.getElementById(`barra-${selecaoId}`).style.width = pctSel + '%';
 
-    // Atualiza stats globais
+    // Marca seleção como completa ou não
+    const row = card.closest('.selecao-row');
+    const completa = tenhoSel === totalSel;
+    row.dataset.completa = completa ? '1' : '0';
+    row.classList.toggle('selecao-completa', completa);
+
+    // Stats globais
     document.getElementById('stat-pct').textContent  = data.percentual.toFixed(1) + '%';
     document.getElementById('stat-falt').textContent = data.faltantes;
     document.getElementById('stat-rep').textContent  = data.repetidas;
@@ -317,35 +484,29 @@ async function atualizar(figurinhaId, albumId, acao) {
     aplicarFiltros();
 }
 
-// ── +1 / -1 em todas ───────────────────────
+// ── +1 / -1 em todas ─────────────────────────────────────────────────────────
 async function atualizarTodas(acao) {
-    const albumId = '<?= $albumId ?>';
-
-    // Pega todos os cards visíveis
     const cards = [...document.querySelectorAll('.figurinha-card')]
         .filter(c => c.style.display !== 'none');
 
-    // No decrementar, ignora cards com quantidade 0
     const alvo = acao === 'decrementar'
         ? cards.filter(c => parseInt(c.dataset.qtd) > 0)
         : cards;
 
     if (alvo.length === 0) return;
 
-    // Confirmação para operação em massa
     const msg = acao === 'incrementar'
         ? `Adicionar +1 em ${alvo.length} figurinha(s)?`
         : `Remover -1 de ${alvo.length} figurinha(s) com quantidade > 0?`;
 
     if (!confirm(msg)) return;
 
-    // Processa em sequência para não sobrecarregar o servidor
     for (const card of alvo) {
-        const figId = card.id.replace('fig-', '');
-        await atualizar(figId, albumId, acao);
+        await atualizar(card.id.replace('fig-', ''), ALBUM_ID, acao);
     }
 }
-// ── Importar CSV ────────────────────────────
+
+// ── Importar CSV ──────────────────────────────────────────────────────────────
 async function importarCSV(input) {
     const arquivo = input.files[0];
     if (!arquivo) return;
@@ -356,9 +517,8 @@ async function importarCSV(input) {
     const form = new FormData();
     form.append('arquivo', arquivo);
 
-    const resp = await fetch(`/api/csv?acao=importar&album_id=<?= $albumId ?>`, {
-        method: 'POST',
-        body: form,
+    const resp = await fetch(`/api/csv?acao=importar&album_id=${ALBUM_ID}`, {
+        method: 'POST', body: form,
     });
     const data = await resp.json();
 
@@ -368,7 +528,6 @@ async function importarCSV(input) {
         document.getElementById('stat-pct').textContent  = data.percentual.toFixed(1) + '%';
         document.getElementById('stat-falt').textContent = data.faltantes;
         document.getElementById('stat-rep').textContent  = data.repetidas;
-        // Recarrega a página para refletir as quantidades
         setTimeout(() => location.reload(), 1500);
     } else {
         msg.textContent = 'Erro ao importar.';
@@ -376,137 +535,132 @@ async function importarCSV(input) {
     }
     input.value = '';
 }
-// ── Dropdown Exp/Imp ────────────────────────
+
+// ── Dropdown Exp/Imp ──────────────────────────────────────────────────────────
 function toggleDropdown() {
     document.getElementById('dropdown-menu').classList.toggle('aberto');
 }
-document.addEventListener('click', function(e) {
-    if (!e.target.closest('.dropdown')) {
+document.addEventListener('click', e => {
+    if (!e.target.closest('.dropdown'))
         document.getElementById('dropdown-menu').classList.remove('aberto');
-    }
 });
-// ─────────────────────────────────────
-// Reservar figurinhas (Sincronizado com Banco de Dados)
-// ─────────────────────────────────────
-const travasDeClique = new Map(); 
 
-// Comunica a alteração para a API em segundo plano
-async function atualizarReservaNoBanco(figurinhaId, reservar) {
-    const albumId = '<?= $albumId ?>';
-    const acao = reservar ? 'reservar' : 'desreservar';
-    
-    try {
-        const formData = new FormData();
-        formData.append('album_id', albumId);
-        formData.append('figurinha_id', figurinhaId);
-        formData.append('acao', acao);
+// ════════════════════════════════════════════════════════════════
+// MODAL DE STATUS DE TROCA
+// ════════════════════════════════════════════════════════════════
+let figSelecionada = null; // { id, codigo }
+let statusPendente = null;
 
-        await fetch('/api/inventario', {
-            method: 'POST',
-            body: formData
-        });
-    } catch (erro) {
-        console.error('Erro ao salvar reserva no servidor:', erro);
+const statusEmoji = { livre:'🟢', troca:'🔄', venda:'💰', bloqueada:'🔒' };
+
+function abrirModalStatus(figId, codigo, statusAtual) {
+    figSelecionada = { id: figId, codigo };
+    statusPendente = null;
+    document.getElementById('modal-status-titulo').textContent = `Figurinha ${codigo}`;
+    document.getElementById('campo-valor').style.display = statusAtual === 'venda' ? 'block' : 'none';
+    document.getElementById('input-valor').value = '';
+    document.getElementById('modal-status').style.display = 'flex';
+}
+
+function definirStatus(status) {
+    statusPendente = status;
+    document.getElementById('campo-valor').style.display = status === 'venda' ? 'block' : 'none';
+}
+
+async function confirmarStatus() {
+    if (!statusPendente || !figSelecionada) return;
+
+    const valor = document.getElementById('input-valor').value;
+
+    const resp = await fetch('/api/trocas', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({
+            acao:         'status_figurinha',
+            album_id:     ALBUM_ID,
+            figurinha_id: figSelecionada.id,
+            status:       statusPendente,
+            valor,
+        }),
+    });
+    const data = await resp.json();
+
+    if (data.sucesso) {
+        const card  = document.getElementById(`fig-${figSelecionada.id}`);
+        const badge = document.getElementById(`badge-${figSelecionada.id}`);
+        card.dataset.status  = data.status;
+        badge.dataset.status = data.status;
+        badge.textContent    = statusEmoji[data.status];
+        document.getElementById('modal-status').style.display = 'none';
+        statusPendente = null;
+        aplicarFiltros();
+    } else {
+        alert('Erro: ' + (data.erro ?? 'desconhecido'));
     }
 }
 
-// Configuração de eventos nos cards
+function fecharModalStatus(e) {
+    if (e.target.classList.contains('modal-overlay'))
+        e.target.style.display = 'none';
+}
+
+// ── Long press / botão direito → abre modal de status ────────────────────────
 document.querySelectorAll('.figurinha-card').forEach(card => {
     let pressTimer = null;
-    let tempoInicioToque = 0;
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let moveuDistancia = false;
-    let disparouLongPress = false;
+    let moveu      = false;
+    let disparou   = false;
+    let touchStartX = 0, touchStartY = 0, tempoInicio = 0;
 
-    function alternarReserva() {
-        const agora = Date.now();
-        const ultimoClique = travasDeClique.get(card.id) || 0;
-
-        // Evita múltiplos disparos acidentais seguidos
-        if (agora - ultimoClique < 500) return;
-        travasDeClique.set(card.id, agora);
-
-        const foiSelecionada = card.classList.toggle('selecionada');
-        const figId = card.id.replace('fig-', '');
-
-        // Dispara o salvamento na API remota
-        atualizarReservaNoBanco(figId, foiSelecionada);
-
-        if (typeof atualizarBarraTroca === 'function') atualizarBarraTroca();
+    function abrirSeTemFigurinha() {
+        const qtd = parseInt(card.dataset.qtd);
+        if (qtd === 0) return; // sem figurinha, não abre
+        abrirModalStatus(
+            card.id.replace('fig-', ''),
+            card.dataset.codigo,
+            card.dataset.status
+        );
         if (navigator.vibrate) navigator.vibrate(40);
     }
 
-    // Celular: Início do Toque
-    card.addEventListener('touchstart', function(e) {
-        if (e.target.closest('.fig-controles')) return; // Botões nativos de + e -
-        
-        tempoInicioToque = Date.now();
-        moveuDistancia = false;
-        disparouLongPress = false;
-
-        const touch = e.touches[0];
-        touchStartX = touch.clientX;
-        touchStartY = touch.clientY;
-
-        // Temporizador para o Toque Longo (Ativa/Desativa o cadeado)
+    card.addEventListener('touchstart', e => {
+        if (e.target.closest('.fig-controles')) return;
+        tempoInicio = Date.now();
+        moveu = false; disparou = false;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
         pressTimer = setTimeout(() => {
-            if (!moveuDistancia) {
-                disparouLongPress = true;
-                alternarReserva();
-            }
-        }, 400); 
+            if (!moveu) { disparou = true; abrirSeTemFigurinha(); }
+        }, 450);
     }, { passive: true });
 
-    // Celular: Cancelamento por Scroll
-    card.addEventListener('touchmove', function(e) {
-        const touch = e.touches[0];
-        const mudancaX = Math.abs(touch.clientX - touchStartX);
-        const mudancaY = Math.abs(touch.clientY - touchStartY);
-
-        if (mudancaX > 8 || mudancaY > 8) {
-            moveuDistancia = true;
-            clearTimeout(pressTimer);
-        }
+    card.addEventListener('touchmove', e => {
+        const dx = Math.abs(e.touches[0].clientX - touchStartX);
+        const dy = Math.abs(e.touches[0].clientY - touchStartY);
+        if (dx > 8 || dy > 8) { moveu = true; clearTimeout(pressTimer); }
     }, { passive: true });
 
-    // Celular: Fim do Toque (Trata o clique curto esquerdo/direito)
-    card.addEventListener('touchend', function(e) {
+    card.addEventListener('touchend', e => {
         clearTimeout(pressTimer);
-        
-        if (e.target.closest('.fig-controles') || moveuDistancia || disparouLongPress) return;
+        if (e.target.closest('.fig-controles') || moveu || disparou) return;
 
-        const duracaoToque = Date.now() - tempoInicioToque;
-
-        // Se foi um toque rápido (< 350ms), roda a lógica antiga de clique esquerdo/direito
-        if (duracaoToque < 350) {
-            e.preventDefault(); // Impede duplo disparo do clique nativo
-            
-            // Descobre onde foi o toque em relação à largura do card
-            const rect = card.getBoundingClientRect();
+        // Toque curto → esquerda/direita = dec/inc
+        if (Date.now() - tempoInicio < 350) {
+            e.preventDefault();
+            const rect  = card.getBoundingClientRect();
             const toqueX = e.changedTouches[0].clientX - rect.left;
-            const meioDoCard = rect.width / 2;
-
-            // Simula os cliques antigos de aumentar e diminuir quantidade
-            if (toqueX < meioDoCard) {
-                const btnDec = card.querySelector('.fig-metade-dec');
-                if (btnDec) btnDec.click();
+            if (toqueX < rect.width / 2) {
+                card.querySelector('.fig-metade-dec')?.click();
             } else {
-                const btnInc = card.querySelector('.fig-metade-inc');
-                if (btnInc) btnInc.click();
+                card.querySelector('.fig-metade-inc')?.click();
             }
         }
     }, { passive: false });
 
-    // PC: Clique com o Botão Direito (Apenas para Alternar a Reserva)
-    card.addEventListener('contextmenu', function(e) {
+    card.addEventListener('contextmenu', e => {
         e.preventDefault();
-        if (!e.target.closest('.fig-controles')) {
-            alternarReserva();
-        }
+        if (!e.target.closest('.fig-controles')) abrirSeTemFigurinha();
     });
 });
 </script>
 
 <?php layoutFim(); ?>
-
