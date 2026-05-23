@@ -120,9 +120,14 @@ layoutInicio('Inventário — ' . $album['nome']);
 <!-- Filtros -->
 <div class="filtros-sticky">
 
-    <!-- Linha 1: busca -->
+    <!-- Linha 1: busca + botão ações em massa -->
     <div class="filtros-barra">
-        <input type="text" id="busca" placeholder="Buscar código ou país...">
+        <input type="text" id="busca" placeholder="Buscar código ou país..."
+               oninput="aplicarFiltros()">
+        <button class="btn-acoes-massa" id="btn-acoes-massa"
+                onclick="togglePainelMassa()" style="display:none">
+            ✱ <span id="contador-massa">0</span>
+        </button>
     </div>
 
     <!-- Linha 2: selects de quantidade e status -->
@@ -136,7 +141,6 @@ layoutInicio('Inventário — ' . $album['nome']);
         <select id="filtro-troca">
             <option value="">Qualquer status</option>
             <option value="livre">🟢 Livre</option>
-            <option value="troca">🔄 Troca</option>
             <option value="venda">💰 Venda</option>
             <option value="bloqueada">🔒 Bloqueada</option>
         </select>
@@ -151,11 +155,58 @@ layoutInicio('Inventário — ' . $album['nome']);
             🔵 Incompletas
         </button>
         <?php foreach ($estrutura as $gKey => $grupo): ?>
-            <button class="pilula" data-grupo="<?= htmlspecialchars($gKey) ?>"
+            <button class="pilula pilula-grupo" data-grupo="<?= htmlspecialchars($gKey) ?>"
                     onclick="filtrarGrupo(this)">
                 <?= htmlspecialchars($gKey === 'especial' ? 'Esp.' : $gKey) ?>
             </button>
         <?php endforeach; ?>
+    </div>
+</div>
+
+<!-- Painel de ações em massa -->
+<div id="painel-massa" style="display:none">
+    <div class="painel-massa-box">
+        <div class="painel-massa-titulo">
+            <span>✱ Ações em <strong id="painel-total">0</strong> figurinhas visíveis</span>
+            <button class="painel-massa-fechar" onclick="togglePainelMassa()">✕</button>
+        </div>
+
+        <div class="painel-massa-secao">
+            <div class="painel-massa-label">Status</div>
+            <div class="painel-status-opcoes">
+                <button class="painel-status-btn" data-status="livre"
+                        onclick="selecionarStatusMassa(this)">
+                    🟢 Livre
+                </button>
+                <button class="painel-status-btn" data-status="venda"
+                        onclick="selecionarStatusMassa(this)">
+                    💰 Venda
+                </button>
+                <button class="painel-status-btn" data-status="bloqueada"
+                        onclick="selecionarStatusMassa(this)">
+                    🔒 Bloqueada
+                </button>
+            </div>
+            <div id="painel-campo-valor" style="display:none;margin-top:.5rem">
+                <label style="font-size:.82rem;font-weight:600">Valor (R$):</label>
+                <input type="number" id="painel-input-valor" min="0" step="0.50"
+                       placeholder="Ex: 5.00"
+                       style="width:100%;padding:.4rem;border-radius:6px;border:1px solid #ddd;margin-top:.25rem">
+            </div>
+            <button class="btn-sm btn-todas-inc" id="btn-aplicar-status"
+                    onclick="aplicarStatusMassa()" style="margin-top:.6rem;display:none">
+                ✓ Aplicar status
+            </button>
+        </div>
+
+        <div class="painel-massa-secao">
+            <div class="painel-massa-label">Quantidade</div>
+            <div class="painel-qtd-opcoes">
+                <button class="btn-sm" onclick="aplicarQtdMassa('decrementar')">−1 em todas</button>
+                <button class="btn-sm" onclick="aplicarQtdMassa('incrementar')">+1 em todas</button>
+                <button class="btn-sm" onclick="aplicarQtdMassa('zerar')">Zerar</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -252,10 +303,27 @@ layoutInicio('Inventário — ' . $album['nome']);
     <div class="modal-box">
         <div class="modal-titulo" id="modal-status-titulo">Figurinha</div>
         <div class="modal-opcoes">
-            <button class="modal-opcao" onclick="definirStatus('livre')">🟢 Livre (disponível para troca)</button>
-            <button class="modal-opcao" onclick="definirStatus('troca')">🔄 Quero trocar</button>
-            <button class="modal-opcao" onclick="definirStatus('venda')">💰 Quero vender</button>
-            <button class="modal-opcao" onclick="definirStatus('bloqueada')">🔒 Bloquear (não negociar)</button>
+            <button class="modal-opcao" data-status="livre" onclick="definirStatus('livre')">
+                <span class="modal-opcao-emoji">🟢</span>
+                <div>
+                    <div class="modal-opcao-titulo">Livre</div>
+                    <div class="modal-opcao-desc">Disponível para troca</div>
+                </div>
+            </button>
+            <button class="modal-opcao" data-status="venda" onclick="definirStatus('venda')">
+                <span class="modal-opcao-emoji">💰</span>
+                <div>
+                    <div class="modal-opcao-titulo">Venda</div>
+                    <div class="modal-opcao-desc">Quero vender</div>
+                </div>
+            </button>
+            <button class="modal-opcao" data-status="bloqueada" onclick="definirStatus('bloqueada')">
+                <span class="modal-opcao-emoji">🔒</span>
+                <div>
+                    <div class="modal-opcao-titulo">Bloqueada</div>
+                    <div class="modal-opcao-desc">Não negociar</div>
+                </div>
+            </button>
         </div>
         <div id="campo-valor" style="display:none;margin-top:.75rem">
             <label style="font-size:.85rem;font-weight:600">Valor (R$):</label>
@@ -263,7 +331,8 @@ layoutInicio('Inventário — ' . $album['nome']);
                    style="width:100%;padding:.4rem;border-radius:6px;border:1px solid #ddd;margin-top:.3rem">
         </div>
         <div class="modal-rodape">
-            <button class="btn-sm btn-todas-inc" onclick="confirmarStatus()">✓ Confirmar</button>
+            <button class="btn-sm btn-todas-inc" id="btn-confirmar-status"
+                    onclick="confirmarStatus()" disabled>✓ Confirmar</button>
             <button class="btn-sm" onclick="document.getElementById('modal-status').style.display='none'">Cancelar</button>
         </div>
     </div>
@@ -273,35 +342,64 @@ layoutInicio('Inventário — ' . $album['nome']);
 /* Badge de status — canto superior direito com fundo escuro */
 .fig-status-badge {
     position: absolute;
-    top: 2px;
-    right: 3px;
-    font-size: .62rem;
-    line-height: 1;
+    top: 2px; right: 3px;
+    font-size: .62rem; line-height: 1;
     background: rgba(0,0,0,.55);
-    border-radius: 6px;
-    padding: 1px 3px;
+    border-radius: 6px; padding: 1px 3px;
     pointer-events: none;
 }
 
 /* Pílula de visibilidade — 3 estados */
-.pilula-visib {
-    font-weight: 700;
-    border-color: #93c5fd;
-    background: #eff6ff;
-    color: #1d4ed8;
-}
-.pilula-visib.verde {
-    background: #f0fdf4;
-    border-color: #bbf7d0;
-    color: #16a34a;
-}
-.pilula-visib.cinza {
-    background: #f5f5f5;
-    border-color: #ddd;
-    color: #666;
-}
+.pilula-visib { font-weight: 700; border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
+.pilula-visib.verde { background: #f0fdf4; border-color: #bbf7d0; color: #16a34a; }
+.pilula-visib.cinza { background: #f5f5f5; border-color: #ddd; color: #666; }
 
-/* Modal */
+/* Botão ações em massa */
+.btn-acoes-massa {
+    display: flex; align-items: center; gap: .3rem;
+    padding: .38rem .75rem; border-radius: var(--radius);
+    border: 2px solid #6366f1; background: #eef2ff;
+    color: #4338ca; font-size: .85rem; font-weight: 700;
+    cursor: pointer; white-space: nowrap;
+    transition: background .15s;
+}
+.btn-acoes-massa:hover { background: #6366f1; color: #fff; }
+
+/* Painel de ações em massa */
+.painel-massa-box {
+    background: #fff; border: 1px solid #e0e0e0;
+    border-radius: 12px; padding: 1rem;
+    margin-bottom: .75rem;
+    box-shadow: 0 4px 16px rgba(0,0,0,.08);
+}
+.painel-massa-titulo {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: .9rem; font-weight: 600; margin-bottom: .75rem;
+}
+.painel-massa-fechar {
+    background: none; border: none; font-size: 1rem;
+    cursor: pointer; color: #aaa; padding: 0;
+}
+.painel-massa-fechar:hover { color: #333; }
+.painel-massa-secao { margin-bottom: .9rem; }
+.painel-massa-secao:last-child { margin-bottom: 0; }
+.painel-massa-label {
+    font-size: .78rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: #aaa; margin-bottom: .4rem;
+}
+.painel-status-opcoes { display: flex; gap: .5rem; flex-wrap: wrap; }
+.painel-status-btn {
+    flex: 1; min-width: 80px;
+    padding: .5rem .6rem; border-radius: 8px;
+    border: 2px solid #e0e0e0; background: #fafafa;
+    font-size: .85rem; font-weight: 600; cursor: pointer;
+    transition: all .15s; text-align: center;
+}
+.painel-status-btn:hover { border-color: #6366f1; background: #eef2ff; }
+.painel-status-btn.ativo { border-color: #6366f1; background: #eef2ff; color: #4338ca; }
+.painel-qtd-opcoes { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+/* Modal de status melhorado */
 .modal-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,.45);
     display: flex; align-items: center; justify-content: center;
@@ -314,10 +412,20 @@ layoutInicio('Inventário — ' . $album['nome']);
 .modal-titulo { font-weight: 700; font-size: 1rem; margin-bottom: 1rem; }
 .modal-opcoes { display: flex; flex-direction: column; gap: .5rem; }
 .modal-opcao {
-    padding: .6rem .9rem; border-radius: 8px; border: 1px solid #e0e0e0;
-    background: #fafafa; text-align: left; font-size: .9rem; cursor: pointer;
+    display: flex; align-items: center; gap: .75rem;
+    padding: .7rem .9rem; border-radius: 10px;
+    border: 2px solid #e0e0e0; background: #fafafa;
+    text-align: left; font-size: .9rem; cursor: pointer;
+    transition: all .15s;
 }
-.modal-opcao:hover { background: #f0f0f0; }
+.modal-opcao:hover { border-color: #6366f1; background: #eef2ff; }
+.modal-opcao.ativa { border-color: #6366f1; background: #eef2ff; }
+.modal-opcao.ativa[data-status="livre"]     { border-color: #16a34a; background: #f0fdf4; }
+.modal-opcao.ativa[data-status="venda"]     { border-color: #d97706; background: #fffbeb; }
+.modal-opcao.ativa[data-status="bloqueada"] { border-color: #6b7280; background: #f3f4f6; }
+.modal-opcao-emoji { font-size: 1.3rem; flex-shrink: 0; }
+.modal-opcao-titulo { font-weight: 700; font-size: .9rem; }
+.modal-opcao-desc   { font-size: .78rem; color: #888; }
 .modal-rodape { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
 </style>
 
@@ -359,14 +467,25 @@ function ciclarVisib() {
     btn.textContent = estado.label;
     btn.className   = 'pilula pilula-visib ' + estado.cls;
 
+    // Reseta grupo para "Todos"
+    filtros.grupo = '';
+    document.querySelectorAll('.pilula-grupo').forEach(p => p.classList.remove('ativa'));
+
     aplicarFiltros();
 }
 
 // ── Filtro por grupo (pílulas) ────────────────────────────────────────────────
 function filtrarGrupo(btn) {
-    document.querySelectorAll('.pilula:not(.pilula-visib)').forEach(p => p.classList.remove('ativa'));
-    btn.classList.add('ativa');
-    filtros.grupo = btn.dataset.grupo;
+    const jaAtivo = btn.classList.contains('ativa');
+    document.querySelectorAll('.pilula-grupo').forEach(p => p.classList.remove('ativa'));
+
+    if (jaAtivo) {
+        // Clique duplo → volta para todos
+        filtros.grupo = '';
+    } else {
+        btn.classList.add('ativa');
+        filtros.grupo = btn.dataset.grupo;
+    }
     aplicarFiltros();
 }
 
@@ -427,9 +546,11 @@ function aplicarFiltros() {
 
         row.style.display = algumVisivel ? '' : 'none';
     });
+
+    // Atualiza contador de ações em massa
+    atualizarContador();
 }
 
-document.getElementById('busca').addEventListener('input', aplicarFiltros);
 document.getElementById('filtro-qtd').addEventListener('change', aplicarFiltros);
 document.getElementById('filtro-troca').addEventListener('change', aplicarFiltros);
 
@@ -487,7 +608,11 @@ async function atualizar(figurinhaId, albumId, acao) {
 // ── +1 / -1 em todas ─────────────────────────────────────────────────────────
 async function atualizarTodas(acao) {
     const cards = [...document.querySelectorAll('.figurinha-card')]
-        .filter(c => c.style.display !== 'none');
+        .filter(c => {
+            if (c.style.display === 'none') return false;
+            const row = c.closest('.selecao-row');
+            return row && row.style.display !== 'none';
+        });
 
     const alvo = acao === 'decrementar'
         ? cards.filter(c => parseInt(c.dataset.qtd) > 0)
@@ -546,41 +671,173 @@ document.addEventListener('click', e => {
 });
 
 // ════════════════════════════════════════════════════════════════
-// MODAL DE STATUS DE TROCA
+// CONTADOR E PAINEL DE AÇÕES EM MASSA
 // ════════════════════════════════════════════════════════════════
-let figSelecionada = null; // { id, codigo }
+let statusMassaSelecionado = null;
+
+function contarVisiveis() {
+    return [...document.querySelectorAll('.figurinha-card')].filter(card => {
+        if (card.style.display === 'none') return false;
+        // Verifica se a selecao-row pai está visível
+        const row = card.closest('.selecao-row');
+        return row && row.style.display !== 'none';
+    }).length;
+}
+
+function atualizarContador() {
+    const n   = contarVisiveis();
+    const btn = document.getElementById('btn-acoes-massa');
+    document.getElementById('contador-massa').textContent = n;
+    btn.style.display = n > 0 ? '' : 'none';
+    document.getElementById('painel-total').textContent = n;
+}
+
+function togglePainelMassa() {
+    const painel = document.getElementById('painel-massa');
+    const aberto = painel.style.display !== 'none';
+    painel.style.display = aberto ? 'none' : 'block';
+    if (!aberto) {
+        // Reseta estado ao abrir
+        statusMassaSelecionado = null;
+        document.querySelectorAll('.painel-status-btn').forEach(b => b.classList.remove('ativo'));
+        document.getElementById('painel-campo-valor').style.display = 'none';
+        document.getElementById('btn-aplicar-status').style.display = 'none';
+    }
+}
+
+function selecionarStatusMassa(btn) {
+    document.querySelectorAll('.painel-status-btn').forEach(b => b.classList.remove('ativo'));
+    btn.classList.add('ativo');
+    statusMassaSelecionado = btn.dataset.status;
+    document.getElementById('painel-campo-valor').style.display =
+        statusMassaSelecionado === 'venda' ? 'block' : 'none';
+    document.getElementById('btn-aplicar-status').style.display = '';
+}
+
+async function aplicarStatusMassa() {
+    if (!statusMassaSelecionado) return;
+
+    const cards = [...document.querySelectorAll('.figurinha-card')]
+        .filter(c => {
+            if (c.style.display === 'none') return false;
+            const row = c.closest('.selecao-row');
+            return row && row.style.display !== 'none' && parseInt(c.dataset.qtd) > 0;
+        });
+
+    if (cards.length === 0) {
+        alert('Nenhuma figurinha com quantidade > 0 nas visíveis.');
+        return;
+    }
+
+    const valor = document.getElementById('painel-input-valor').value;
+
+    if (!confirm(`Aplicar status "${statusMassaSelecionado}" em ${cards.length} figurinha(s)?`)) return;
+
+    const btn = document.getElementById('btn-aplicar-status');
+    btn.disabled    = true;
+    btn.textContent = '⏳ Aplicando...';
+
+    for (const card of cards) {
+        const figId = card.id.replace('fig-', '');
+        const resp  = await fetch('/api/trocas', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: new URLSearchParams({
+                acao: 'status_figurinha', album_id: ALBUM_ID,
+                figurinha_id: figId, status: statusMassaSelecionado, valor,
+            }),
+        });
+        const data = await resp.json();
+        if (data.sucesso) {
+            const badge = document.getElementById(`badge-${figId}`);
+            card.dataset.status  = data.status;
+            badge.dataset.status = data.status;
+            badge.textContent    = statusEmoji[data.status];
+        }
+    }
+
+    btn.disabled    = false;
+    btn.textContent = '✓ Aplicar status';
+    document.getElementById('painel-massa').style.display = 'none';
+    aplicarFiltros();
+}
+
+async function aplicarQtdMassa(acao) {
+    const cards = [...document.querySelectorAll('.figurinha-card')]
+        .filter(c => {
+            if (c.style.display === 'none') return false;
+            const row = c.closest('.selecao-row');
+            return row && row.style.display !== 'none';
+        });
+
+    const alvo = acao === 'decrementar' || acao === 'zerar'
+        ? cards.filter(c => parseInt(c.dataset.qtd) > 0)
+        : cards;
+
+    if (alvo.length === 0) return;
+
+    const msgs = {
+        incrementar: `+1 em ${alvo.length} figurinha(s)?`,
+        decrementar: `-1 em ${alvo.length} figurinha(s)?`,
+        zerar:       `Zerar ${alvo.length} figurinha(s)?`,
+    };
+    if (!confirm(msgs[acao])) return;
+
+    document.getElementById('painel-massa').style.display = 'none';
+
+    for (const card of alvo) {
+        const figId  = card.id.replace('fig-', '');
+        const acaoApi = acao === 'zerar' ? 'zerar' : acao;
+        await atualizar(figId, ALBUM_ID, acaoApi);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════
+// MODAL DE STATUS INDIVIDUAL
+// ════════════════════════════════════════════════════════════════
+let figSelecionada = null;
 let statusPendente = null;
 
-const statusEmoji = { livre:'🟢', troca:'🔄', venda:'💰', bloqueada:'🔒' };
+const statusEmoji = { livre:'🟢', venda:'💰', bloqueada:'🔒' };
 
 function abrirModalStatus(figId, codigo, statusAtual) {
     figSelecionada = { id: figId, codigo };
     statusPendente = null;
+
     document.getElementById('modal-status-titulo').textContent = `Figurinha ${codigo}`;
     document.getElementById('campo-valor').style.display = statusAtual === 'venda' ? 'block' : 'none';
     document.getElementById('input-valor').value = '';
+
+    // Pré-seleciona o status atual
+    document.querySelectorAll('.modal-opcao').forEach(btn => {
+        btn.classList.toggle('ativa', btn.dataset.status === statusAtual);
+    });
+    // Habilita confirmar só se já tem status pré-selecionado
+    document.getElementById('btn-confirmar-status').disabled = false;
+    statusPendente = statusAtual;
+
     document.getElementById('modal-status').style.display = 'flex';
 }
 
 function definirStatus(status) {
     statusPendente = status;
+    document.querySelectorAll('.modal-opcao').forEach(btn => {
+        btn.classList.toggle('ativa', btn.dataset.status === status);
+    });
     document.getElementById('campo-valor').style.display = status === 'venda' ? 'block' : 'none';
+    document.getElementById('btn-confirmar-status').disabled = false;
 }
 
 async function confirmarStatus() {
     if (!statusPendente || !figSelecionada) return;
-
     const valor = document.getElementById('input-valor').value;
 
     const resp = await fetch('/api/trocas', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: new URLSearchParams({
-            acao:         'status_figurinha',
-            album_id:     ALBUM_ID,
-            figurinha_id: figSelecionada.id,
-            status:       statusPendente,
-            valor,
+            acao: 'status_figurinha', album_id: ALBUM_ID,
+            figurinha_id: figSelecionada.id, status: statusPendente, valor,
         }),
     });
     const data = await resp.json();
