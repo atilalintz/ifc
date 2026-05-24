@@ -1,824 +1,792 @@
 <?php
-// pages/trocas.php — Trocas: transferência entre álbuns + repetidas + matches
+// api/trocas.php — Transferência e trocas entre usuários
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/session.php';
-require_once __DIR__ . '/layout.php';
+
+header('Content-Type: application/json');
+requireLogin();
 
 $usuario = usuarioLogado();
 $db      = getDB();
 
-$stmt = $db->prepare("
-    SELECT id, nome, total_repetidas, percentual_conclusao
-    FROM " . tbl('albuns') . "
-    WHERE usuario_id = :uid AND ativo = 1
-    ORDER BY nome
-");
-$stmt->execute([':uid' => $usuario['id']]);
-$albuns = $stmt->fetchAll();
-
-layoutInicio('Trocas — Copa 2026');
-?>
-
-<div class="inventario-header">
-    <div>
-        <a href="/albuns" class="btn-voltar">← Álbuns</a>
-        <h1 class="page-title" style="margin-bottom:.25rem">Trocas</h1>
-        <p style="color:#888;font-size:.9rem;margin:0">
-            Transfira entre seus álbuns, gerencie repetidas e encontre parceiros
-        </p>
-    </div>
-</div>
-
-<!-- ══ SEÇÃO 0: Transferência entre álbuns ══════════════════════════════════ -->
-<div class="trocas-secao">
-    <div class="trocas-secao-header">
-        <h2 class="trocas-secao-titulo">↔️ Transferir entre Álbuns</h2>
-    </div>
-    <p class="trocas-secao-desc">
-        Move figurinhas repetidas de um álbum para onde estão faltando.
-    </p>
-
-    <!-- Seletores origem / destino -->
-    <div class="trocas-seletores">
-        <div class="trocas-painel">
-            <label class="trocas-label">📤 Origem <small>(tem repetidas)</small></label>
-            <select id="sel-origem" onchange="carregarTransferencia()">
-                <option value="">— selecione —</option>
-                <?php foreach ($albuns as $a): ?>
-                    <option value="<?= $a['id'] ?>">
-                        <?= htmlspecialchars($a['nome']) ?>
-                        (<?= $a['total_repetidas'] ?> repetidas)
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="trocas-seta-meio">→</div>
-        <div class="trocas-painel">
-            <label class="trocas-label">📥 Destino <small>(receberá)</small></label>
-            <select id="sel-destino" onchange="carregarTransferencia()">
-                <option value="">— selecione —</option>
-                <?php foreach ($albuns as $a): ?>
-                    <option value="<?= $a['id'] ?>">
-                        <?= htmlspecialchars($a['nome']) ?>
-                        (<?= number_format($a['percentual_conclusao'],1) ?>%)
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-    </div>
-
-    <!-- Barra de ação da transferência -->
-    <div id="barra-transferir" style="display:none" class="acoes-barra" style="margin-top:.75rem">
-        <span id="msg-transfer" style="font-size:.88rem;color:#555"></span>
-        <button class="btn-sm" onclick="selecionarTodasTransfer()">Selecionar todas</button>
-        <button class="btn-sm" onclick="limparTransfer()">Limpar</button>
-        <button class="btn-sm btn-todas-inc" id="btn-transferir" onclick="executarTransferencia()" disabled>
-            ✓ Transferir selecionadas
-        </button>
-    </div>
-
-    <!-- Grid de figurinhas elegíveis -->
-    <div id="transfer-estado" class="trocas-estado">
-        Selecione origem e destino para ver as figurinhas disponíveis.
-    </div>
-    <div id="transfer-filtro" style="display:none;margin:.5rem 0">
-        <input type="text" id="busca-transfer" placeholder="Buscar código ou país..."
-               oninput="filtrarTransfer()"
-               style="padding:.4rem .65rem;border:1px solid #ddd;border-radius:8px;font-size:.88rem;width:100%;max-width:280px">
-    </div>
-    <div id="transfer-grid" style="display:none" class="lista-grupos-trocas"></div>
-</div>
-
-<!-- Seletor de álbum para seções 1 e 2 -->
-<div class="acoes-barra" style="margin-bottom:1rem">
-    <label style="font-weight:600;font-size:.9rem">📚 Álbum para trocas:</label>
-    <select id="select-album" onchange="trocarAlbum()"
-            style="padding:.4rem .6rem;border-radius:6px;border:1px solid #ddd;font-size:.9rem">
-        <option value="">— selecione —</option>
-        <?php foreach ($albuns as $a): ?>
-            <option value="<?= $a['id'] ?>"
-                    data-rep="<?= $a['total_repetidas'] ?>"
-                    data-pct="<?= number_format($a['percentual_conclusao'],1) ?>">
-                <?= htmlspecialchars($a['nome']) ?>
-                (<?= $a['total_repetidas'] ?> repetidas · <?= number_format($a['percentual_conclusao'],1) ?>%)
-            </option>
-        <?php endforeach; ?>
-    </select>
-</div>
-
-<div id="estado-inicial" class="trocas-estado">
-    Selecione um álbum acima para ver suas repetidas e parceiros de troca.
-</div>
-
-<div id="conteudo-trocas" style="display:none">
-
-    <!-- ══ SEÇÃO 1: Minhas repetidas ══════════════════════════════════════ -->
-    <div class="trocas-secao">
-        <div class="trocas-secao-header">
-            <h2 class="trocas-secao-titulo">🔁 Minhas Repetidas</h2>
-            <span id="badge-repetidas" class="trocas-badge">0</span>
-        </div>
-        <p class="trocas-secao-desc">
-            Clique longo (ou botão direito no PC) para definir o status de cada figurinha.
-        </p>
-        <div class="status-filtros">
-            <button class="status-pill ativa" data-status="" onclick="filtrarStatus(this)">Todas</button>
-            <button class="status-pill" data-status="livre"     onclick="filtrarStatus(this)">🟢 Livre</button>
-            <button class="status-pill" data-status="troca"     onclick="filtrarStatus(this)">🔄 Troca</button>
-            <button class="status-pill" data-status="venda"     onclick="filtrarStatus(this)">💰 Venda</button>
-            <button class="status-pill" data-status="bloqueada" onclick="filtrarStatus(this)">🔒 Bloqueada</button>
-        </div>
-        <div id="grid-repetidas" class="lista-grupos-trocas"></div>
-        <div id="estado-sem-repetidas" class="trocas-estado" style="display:none">
-            Nenhuma figurinha repetida neste álbum ainda.
-        </div>
-    </div>
-
-    <!-- ══ SEÇÃO 2: Matches com outros usuários ═══════════════════════════ -->
-    <div class="trocas-secao">
-        <div class="trocas-secao-header">
-            <h2 class="trocas-secao-titulo">🤝 Parceiros de Troca</h2>
-            <span id="badge-matches" class="trocas-badge">0</span>
-        </div>
-        <p class="trocas-secao-desc">
-            Usuários que têm o que você precisa ou precisam do que você tem.
-        </p>
-        <div id="lista-matches"></div>
-        <div id="estado-sem-matches" class="trocas-estado" style="display:none">
-            Nenhum parceiro encontrado ainda.<br>
-            <small>Isso melhora conforme mais usuários cadastrarem seus álbuns.</small>
-        </div>
-        <div id="estado-calculando" class="trocas-estado" style="display:none">
-            ⏳ Calculando matches...
-        </div>
-    </div>
-</div>
-
-<!-- Modal de status ────────────────────────────────────────────────────── -->
-<div id="modal-status" class="modal-overlay" style="display:none" onclick="fecharModal(event)">
-    <div class="modal-box">
-        <div class="modal-titulo" id="modal-titulo-fig">Figurinha</div>
-        <div class="modal-opcoes">
-            <button class="modal-opcao" onclick="definirStatus('livre')">🟢 Livre (disponível para troca)</button>
-            <button class="modal-opcao" onclick="definirStatus('troca')">🔄 Quero trocar</button>
-            <button class="modal-opcao" onclick="definirStatus('venda')">💰 Quero vender</button>
-            <button class="modal-opcao" onclick="definirStatus('bloqueada')">🔒 Bloquear (não negociar)</button>
-        </div>
-        <div id="campo-valor" style="display:none;margin-top:.75rem">
-            <label style="font-size:.85rem;font-weight:600">Valor (R$):</label>
-            <input type="number" id="input-valor" min="0" step="0.50" placeholder="Ex: 5.00"
-                   style="width:100%;padding:.4rem;border-radius:6px;border:1px solid #ddd;margin-top:.3rem">
-        </div>
-        <div class="modal-rodape">
-            <button class="btn-sm" onclick="confirmarStatus()">✓ Confirmar</button>
-            <button class="btn-sm" onclick="document.getElementById('modal-status').style.display='none'">Cancelar</button>
-        </div>
-    </div>
-</div>
-
-<!-- Modal de contato ───────────────────────────────────────────────────── -->
-<div id="modal-contato" class="modal-overlay" style="display:none" onclick="fecharModal(event)">
-    <div class="modal-box">
-        <div class="modal-titulo" id="modal-contato-nome"></div>
-        <div id="modal-contato-corpo"></div>
-        <div class="modal-rodape">
-            <button class="btn-sm" onclick="document.getElementById('modal-contato').style.display='none'">Fechar</button>
-        </div>
-    </div>
-</div>
-
-<style>
-.trocas-secao {
-    background: var(--bg-card, #fff);
-    border: 1px solid var(--border, #e0e0e0);
-    border-radius: 12px;
-    padding: 1.25rem;
-    margin-bottom: 1.5rem;
-}
-.trocas-secao-header { display:flex; align-items:center; gap:.75rem; margin-bottom:.4rem; }
-.trocas-secao-titulo { margin:0; font-size:1.05rem; }
-.trocas-badge {
-    background:#6366f1; color:#fff;
-    border-radius:20px; padding:.1rem .55rem;
-    font-size:.78rem; font-weight:700;
-}
-.trocas-secao-desc { color:#888; font-size:.85rem; margin:0 0 .75rem; }
-.trocas-estado { text-align:center; padding:2rem 1rem; color:#aaa; font-size:.92rem; line-height:1.7; }
-
-/* Seletores de transferência */
-.trocas-seletores { display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:.75rem; }
-.trocas-painel { flex:1; min-width:200px; }
-.trocas-label { display:block; font-weight:600; font-size:.85rem; margin-bottom:.3rem; }
-.trocas-label small { font-weight:400; color:#888; }
-.trocas-painel select {
-    width:100%; padding:.42rem .6rem;
-    border:1px solid var(--border,#ddd);
-    border-radius:8px; font-size:.88rem;
-    background:var(--bg,#fafafa);
-}
-.trocas-seta-meio { font-size:1.5rem; color:#bbb; padding-bottom:.1rem; }
-
-/* Filtros de status */
-.status-filtros { display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:.75rem; }
-.status-pill {
-    padding:.25rem .65rem; border-radius:20px;
-    border:1px solid #ddd; background:#f5f5f5;
-    font-size:.8rem; cursor:pointer;
-}
-.status-pill.ativa { background:#6366f1; color:#fff; border-color:#6366f1; }
-
-/* Grid agrupado (compartilhado pelas duas seções) */
-.lista-grupos-trocas .grupo-titulo {
-    font-weight:700; font-size:.78rem; text-transform:uppercase;
-    letter-spacing:.05em; color:#aaa; margin:.75rem 0 .3rem; padding-left:.2rem;
-}
-.lista-grupos-trocas .selecao-mini {
-    display:flex; align-items:center; gap:.4rem;
-    font-size:.82rem; font-weight:600; margin:.5rem 0 .3rem;
-}
-.lista-grupos-trocas .selecao-mini img { width:20px; height:14px; object-fit:cover; border-radius:2px; }
-
-/* Card selecionado para transferência */
-.figurinha-card.para-transferir {
-    outline:2px solid #22c55e;
-    background:#f0fdf4 !important;
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['erro' => 'Método não permitido']);
+    exit;
 }
 
-/* Badge de status */
-.fig-status-badge {
-    position:absolute; bottom:2px; left:0; right:0;
-    text-align:center; font-size:.6rem; line-height:1.3;
-    pointer-events:none;
-}
+$acao = $_POST['acao'] ?? '';
 
-/* Cards de match */
-.match-card {
-    display:flex; align-items:center; gap:1rem;
-    padding:.85rem 1rem;
-    border:1px solid var(--border,#e0e0e0);
-    border-radius:10px; margin-bottom:.6rem;
-    background:var(--bg,#fafafa);
-}
-.match-avatar { width:44px; height:44px; border-radius:50%; object-fit:cover; flex-shrink:0; background:#e0e0e0; }
-.match-info { flex:1; min-width:0; }
-.match-nome { font-weight:700; font-size:.95rem; }
-.match-loc  { font-size:.78rem; color:#888; }
-.match-exemplos { font-size:.78rem; color:#555; margin-top:.2rem; }
-.match-score {
-    background:#f0fdf4; color:#16a34a;
-    border:1px solid #bbf7d0; border-radius:20px;
-    padding:.2rem .6rem; font-size:.8rem; font-weight:700; white-space:nowrap;
-}
-.match-btn {
-    padding:.35rem .8rem; border-radius:8px;
-    background:#6366f1; color:#fff; border:none;
-    font-size:.82rem; cursor:pointer; white-space:nowrap;
-}
-.match-btn:hover { background:#4f46e5; }
-
-/* Modais */
-.modal-overlay {
-    position:fixed; inset:0; background:rgba(0,0,0,.45);
-    display:flex; align-items:center; justify-content:center;
-    z-index:1000; padding:1rem;
-}
-.modal-box {
-    background:#fff; border-radius:14px; padding:1.5rem;
-    width:100%; max-width:360px; box-shadow:0 8px 32px rgba(0,0,0,.18);
-}
-.modal-titulo { font-weight:700; font-size:1rem; margin-bottom:1rem; }
-.modal-opcoes { display:flex; flex-direction:column; gap:.5rem; }
-.modal-opcao {
-    padding:.6rem .9rem; border-radius:8px; border:1px solid #e0e0e0;
-    background:#fafafa; text-align:left; font-size:.9rem; cursor:pointer;
-}
-.modal-opcao:hover { background:#f0f0f0; }
-.modal-rodape { display:flex; gap:.5rem; justify-content:flex-end; margin-top:1rem; }
-
-.contato-linha {
-    display:flex; align-items:center; gap:.75rem;
-    padding:.75rem; background:#f5f5f5; border-radius:8px; margin-bottom:.5rem;
-}
-.contato-icone { font-size:1.4rem; }
-.contato-link { font-weight:600; font-size:.95rem; color:#6366f1; text-decoration:none; }
-.contato-link:hover { text-decoration:underline; }
-
-@media(max-width:600px){
-    .trocas-seta-meio { display:none; }
-    .match-card { flex-wrap:wrap; }
-    .match-score { order:-1; }
-}
-</style>
-
-<script>
-// ════════════════════════════════════════════════════════════════
-// ESTADO GLOBAL
-// ════════════════════════════════════════════════════════════════
-const trocas = {
-    albumId:              null,
-    figurinhaSelecionada: null,
-    filtroStatus:         '',
+// ── Roteador de ações ────────────────────────────────────────────────────────
+match ($acao) {
+    'transferir'       => transferir($db, $usuario),
+    'figurinhas_album' => figurinhasAlbum($db, $usuario),
+    'match_recalcular' => matchRecalcular($db, $usuario),
+    'match_listar'         => matchListar($db, $usuario),
+    'status_figurinha'     => statusFigurinha($db, $usuario),
+    'minhas_repetidas'     => minhasRepetidas($db, $usuario),
+    'parceiro_figurinhas'  => parceirFigurinhas($db, $usuario),
+    'favorito_toggle'      => favoritoToggle($db, $usuario),
+    'colecionadores_listar'=> colecionadoresListar($db, $usuario),
+    default                => responderErro(400, 'Ação inválida'),
 };
 
-const transfer = {
-    origemId:    null,
-    destinoId:   null,
-    figurinhas:  [],          // elegíveis
-    selecionadas: new Set(),
-};
+// ── Retorna figurinhas de um álbum para popular o grid ───────────────────────
+// Usada pelo JS ao trocar o álbum selecionado no <select>
+function figurinhasAlbum(PDO $db, array $usuario): void
+{
+    $albumId = $_POST['album_id'] ?? '';
+    $modo    = $_POST['modo']     ?? 'origem'; // 'origem' = repetidas | 'destino' = faltantes
 
-// ════════════════════════════════════════════════════════════════
-// SEÇÃO 0 — TRANSFERÊNCIA ENTRE ÁLBUNS
-// ════════════════════════════════════════════════════════════════
+    if (!$albumId) responderErro(400, 'album_id obrigatório');
 
-async function carregarTransferencia() {
-    transfer.origemId  = document.getElementById('sel-origem').value  || null;
-    transfer.destinoId = document.getElementById('sel-destino').value || null;
+    // Garante que o álbum pertence ao usuário
+    verificarDono($db, $albumId, $usuario['id']);
 
-    const estado  = document.getElementById('transfer-estado');
-    const grid    = document.getElementById('transfer-grid');
-    const filtro  = document.getElementById('transfer-filtro');
-    const barra   = document.getElementById('barra-transferir');
-
-    // Reseta
-    transfer.selecionadas.clear();
-    grid.innerHTML    = '';
-    grid.style.display   = 'none';
-    filtro.style.display = 'none';
-    barra.style.display  = 'none';
-
-    if (!transfer.origemId || !transfer.destinoId) {
-        estado.textContent = 'Selecione origem e destino para ver as figurinhas disponíveis.';
-        estado.style.display = 'block';
-        return;
-    }
-    if (transfer.origemId === transfer.destinoId) {
-        estado.textContent = 'Origem e destino precisam ser álbuns diferentes.';
-        estado.style.display = 'block';
-        return;
-    }
-
-    estado.textContent   = '⏳ Carregando figurinhas...';
-    estado.style.display = 'block';
-
-    const [resOrigem, resDestino] = await Promise.all([
-        fetchFigurinhasAlbum(transfer.origemId,  'origem'),
-        fetchFigurinhasAlbum(transfer.destinoId, 'destino'),
-    ]);
-
-    if (!resOrigem.sucesso || !resDestino.sucesso) {
-        estado.textContent = 'Erro ao carregar. Tente novamente.';
-        return;
-    }
-
-    const faltamNoDestino = new Set(resDestino.figurinhas.map(f => f.figurinha_id));
-    transfer.figurinhas   = resOrigem.figurinhas.filter(f => faltamNoDestino.has(f.figurinha_id));
-
-    if (transfer.figurinhas.length === 0) {
-        estado.textContent   = 'Nenhuma figurinha elegível — a origem não tem repetidas que o destino precise.';
-        estado.style.display = 'block';
-        return;
+    if ($modo === 'origem') {
+        // Figurinhas com quantidade > 1 (tem repetida para transferir)
+        $stmt = $db->prepare("
+            SELECT
+                f.id         AS figurinha_id,
+                f.codigo,
+                f.numero,
+                f.tipo,
+                s.sigla      AS selecao_sigla,
+                s.nome       AS selecao_nome,
+                s.bandeira_url,
+                g.codigo     AS grupo_codigo,
+                i.quantidade
+            FROM " . tbl('inventario') . " i
+            JOIN " . tbl('figurinhas') . " f ON f.id = i.figurinha_id
+            JOIN " . tbl('selecoes')   . " s ON s.id = f.selecao_id
+            LEFT JOIN " . tbl('grupos'). " g ON g.id = s.grupo_id
+            WHERE i.album_id  = :aid
+              AND i.usuario_id = :uid
+              AND i.quantidade > 1
+            ORDER BY g.ordem, s.sigla, f.numero
+        ");
+    } else {
+        // Figurinhas com quantidade = 0 no destino (faltando)
+        $stmt = $db->prepare("
+            SELECT
+                f.id         AS figurinha_id,
+                f.codigo,
+                f.numero,
+                f.tipo,
+                s.sigla      AS selecao_sigla,
+                s.nome       AS selecao_nome,
+                s.bandeira_url,
+                g.codigo     AS grupo_codigo,
+                0            AS quantidade
+            FROM " . tbl('figurinhas') . " f
+            JOIN " . tbl('selecoes')   . " s ON s.id = f.selecao_id
+            LEFT JOIN " . tbl('grupos'). " g ON g.id = s.grupo_id
+            LEFT JOIN " . tbl('inventario') . " i
+                ON i.figurinha_id = f.id AND i.album_id = :aid
+            WHERE COALESCE(i.quantidade, 0) = 0
+            ORDER BY g.ordem, s.sigla, f.numero
+        ");
     }
 
-    estado.style.display = 'none';
-    filtro.style.display = 'block';
-    grid.style.display   = 'block';
-    barra.style.display  = '';
-
-    renderizarGridTransfer();
-    atualizarBarraTransfer();
+    if ($modo === 'origem') {
+        $stmt->execute([':aid' => $albumId, ':uid' => $usuario['id']]);
+    } else {
+        $stmt->execute([':aid' => $albumId]);
+    }
+    echo json_encode(['sucesso' => true, 'figurinhas' => $stmt->fetchAll()]);
+    exit;
 }
 
-async function fetchFigurinhasAlbum(albumId, modo) {
+// ── Transfere figurinhas selecionadas de origem → destino ───────────────────
+function transferir(PDO $db, array $usuario): void
+{
+    $origemId  = $_POST['album_origem_id']  ?? '';
+    $destinoId = $_POST['album_destino_id'] ?? '';
+    $ids       = $_POST['figurinha_ids']    ?? ''; // JSON string: ["uuid1","uuid2"]
+
+    if (!$origemId || !$destinoId || !$ids) {
+        responderErro(400, 'Parâmetros incompletos');
+    }
+
+    if ($origemId === $destinoId) {
+        responderErro(400, 'Origem e destino não podem ser o mesmo álbum');
+    }
+
+    $figurinhaIds = json_decode($ids, true);
+    if (!is_array($figurinhaIds) || empty($figurinhaIds)) {
+        responderErro(400, 'Nenhuma figurinha selecionada');
+    }
+
+    // Garante que ambos os álbuns pertencem ao usuário
+    verificarDono($db, $origemId,  $usuario['id']);
+    verificarDono($db, $destinoId, $usuario['id']);
+
+    $db->beginTransaction();
+
     try {
-        const r = await fetch('/api/trocas', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: `acao=figurinhas_album&album_id=${albumId}&modo=${modo}`,
-        });
-        return await r.json();
-    } catch { return { sucesso: false }; }
-}
+        $transferidas = 0;
+        $ignoradas    = 0; // destino já tem a figurinha
 
-function renderizarGridTransfer() {
-    const grid = document.getElementById('transfer-grid');
-    grid.innerHTML = '';
+        foreach ($figurinhaIds as $figId) {
+            $figId = (string) $figId;
 
-    const grupos = {};
-    for (const f of transfer.figurinhas) {
-        const gKey = f.grupo_codigo || 'especial';
-        if (!grupos[gKey]) grupos[gKey] = {};
-        if (!grupos[gKey][f.selecao_sigla]) {
-            grupos[gKey][f.selecao_sigla] = { nome: f.selecao_nome, bandeira: f.bandeira_url, itens: [] };
-        }
-        grupos[gKey][f.selecao_sigla].itens.push(f);
-    }
+            // Busca quantidade atual na origem
+            $stmt = $db->prepare("
+                SELECT id, quantidade FROM " . tbl('inventario') . "
+                WHERE album_id = :aid AND figurinha_id = :fid AND usuario_id = :uid
+            ");
+            $stmt->execute([':aid' => $origemId, ':fid' => $figId, ':uid' => $usuario['id']]);
+            $origem = $stmt->fetch();
 
-    for (const [gKey, selecoes] of Object.entries(grupos)) {
-        const divG = document.createElement('div');
-
-        const tit = document.createElement('div');
-        tit.className   = 'grupo-titulo';
-        tit.textContent = gKey === 'especial' ? 'Especiais' : `Grupo ${gKey}`;
-        divG.appendChild(tit);
-
-        for (const [sigla, sel] of Object.entries(selecoes)) {
-            const divS = document.createElement('div');
-            divS.dataset.sigla = sigla;
-            divS.dataset.nome  = sel.nome.toLowerCase();
-
-            const mini = document.createElement('div');
-            mini.className = 'selecao-mini';
-            mini.innerHTML = `
-                <img src="${sel.bandeira}" alt="${sigla}" onerror="this.style.display='none'">
-                <span class="selecao-sigla-badge">${sigla}</span>
-                <span>${sel.nome}</span>`;
-            divS.appendChild(mini);
-
-            const subGrid = document.createElement('div');
-            subGrid.className = 'figurinhas-grid';
-
-            for (const f of sel.itens) {
-                const card = document.createElement('div');
-                card.className   = 'figurinha-card tem repetida';
-                card.id          = `tr-${f.figurinha_id}`;
-                card.dataset.id  = f.figurinha_id;
-                card.dataset.codigo = f.codigo;
-                card.style.cursor   = 'pointer';
-                card.innerHTML = `
-                    <span class="fig-codigo">${f.codigo}</span>
-                    <div style="font-size:.8rem;text-align:center">×${f.quantidade}</div>`;
-
-                card.addEventListener('click', () => toggleTransfer(f.figurinha_id, card));
-                card.addEventListener('touchend', e => {
-                    e.preventDefault();
-                    toggleTransfer(f.figurinha_id, card);
-                }, { passive: false });
-
-                subGrid.appendChild(card);
+            // Pula se não existe ou já ficou sem repetida (corrida entre requests)
+            if (!$origem || (int)$origem['quantidade'] <= 1) {
+                $ignoradas++;
+                continue;
             }
 
-            divS.appendChild(subGrid);
-            divG.appendChild(divS);
+            // Busca registro no destino
+            $stmt = $db->prepare("
+                SELECT id, quantidade FROM " . tbl('inventario') . "
+                WHERE album_id = :aid AND figurinha_id = :fid
+            ");
+            $stmt->execute([':aid' => $destinoId, ':fid' => $figId]);
+            $destino = $stmt->fetch();
+
+            // Desconta 1 da origem
+            $db->prepare("
+                UPDATE " . tbl('inventario') . "
+                SET quantidade = quantidade - 1
+                WHERE id = :id
+            ")->execute([':id' => $origem['id']]);
+
+            if ($destino) {
+                // Destino já existe: incrementa
+                $db->prepare("
+                    UPDATE " . tbl('inventario') . "
+                    SET quantidade = quantidade + 1
+                    WHERE id = :id
+                ")->execute([':id' => $destino['id']]);
+            } else {
+                // Destino não existe: cria com quantidade 1
+                $db->prepare("
+                    INSERT INTO " . tbl('inventario') . "
+                        (id, album_id, usuario_id, figurinha_id, quantidade, quantidade_bloqueada)
+                    VALUES (UUID(), :aid, :uid, :fid, 1, 0)
+                ")->execute([':aid' => $destinoId, ':uid' => $usuario['id'], ':fid' => $figId]);
+            }
+
+            $transferidas++;
         }
 
-        grid.appendChild(divG);
+        // Recalcula estatísticas dos dois álbuns
+        recalcularAlbum($db, $origemId);
+        recalcularAlbum($db, $destinoId);
+
+        $db->commit();
+
+        echo json_encode([
+            'sucesso'      => true,
+            'transferidas' => $transferidas,
+            'ignoradas'    => $ignoradas,
+        ]);
+
+    } catch (Throwable $e) {
+        $db->rollBack();
+        responderErro(500, 'Erro interno: ' . $e->getMessage());
     }
+
+    exit;
 }
 
-function toggleTransfer(id, card) {
-    if (transfer.selecionadas.has(id)) {
-        transfer.selecionadas.delete(id);
-        card.classList.remove('para-transferir');
+// ── Minhas repetidas disponíveis para troca ──────────────────────────────────
+// Retorna figurinhas com quantidade > 1 do álbum escolhido,
+// com status_troca e valor_troca para exibição na seção 1
+function minhasRepetidas(PDO $db, array $usuario): void
+{
+    $albumId = $_POST['album_id'] ?? '';
+    if (!$albumId) responderErro(400, 'album_id obrigatório');
+    verificarDono($db, $albumId, $usuario['id']);
+
+    $stmt = $db->prepare("
+        SELECT
+            f.id            AS figurinha_id,
+            f.codigo,
+            f.numero,
+            f.tipo,
+            s.sigla         AS selecao_sigla,
+            s.nome          AS selecao_nome,
+            s.bandeira_url,
+            g.codigo        AS grupo_codigo,
+            i.quantidade,
+            i.status_troca,
+            i.valor_troca,
+            i.quantidade_bloqueada
+        FROM " . tbl('inventario') . " i
+        JOIN " . tbl('figurinhas') . " f ON f.id = i.figurinha_id
+        JOIN " . tbl('selecoes')   . " s ON s.id = f.selecao_id
+        LEFT JOIN " . tbl('grupos'). " g ON g.id = s.grupo_id
+        WHERE i.album_id   = :aid
+          AND i.usuario_id = :uid
+          AND i.quantidade > 1
+        ORDER BY g.ordem, s.sigla, f.numero
+    ");
+    $stmt->execute([':aid' => $albumId, ':uid' => $usuario['id']]);
+
+    echo json_encode(['sucesso' => true, 'figurinhas' => $stmt->fetchAll()]);
+    exit;
+}
+
+// ── Altera status_troca de uma figurinha ─────────────────────────────────────
+// status: livre | troca | venda | bloqueada
+// valor_troca: decimal ou null (só usado quando status = venda)
+function statusFigurinha(PDO $db, array $usuario): void
+{
+    $albumId     = $_POST['album_id']     ?? '';
+    $figurinhaId = $_POST['figurinha_id'] ?? '';
+    $status      = $_POST['status']       ?? '';
+    $valor       = $_POST['valor']        ?? null;
+
+    $statusValidos = ['livre', 'troca', 'venda', 'bloqueada'];
+    if (!$albumId || !$figurinhaId || !in_array($status, $statusValidos)) {
+        responderErro(400, 'Parâmetros inválidos');
+    }
+
+    verificarDono($db, $albumId, $usuario['id']);
+
+    // valor só faz sentido para venda; nos demais, limpa
+    $valorFinal = ($status === 'venda' && is_numeric($valor)) ? (float)$valor : null;
+
+    $stmt = $db->prepare("
+        UPDATE " . tbl('inventario') . "
+        SET status_troca = :status,
+            valor_troca  = :valor
+        WHERE album_id    = :aid
+          AND figurinha_id = :fid
+          AND usuario_id   = :uid
+    ");
+    $stmt->execute([
+        ':status' => $status,
+        ':valor'  => $valorFinal,
+        ':aid'    => $albumId,
+        ':fid'    => $figurinhaId,
+        ':uid'    => $usuario['id'],
+    ]);
+
+    if ($stmt->rowCount() === 0) {
+        responderErro(404, 'Figurinha não encontrada no inventário');
+    }
+
+    echo json_encode(['sucesso' => true, 'status' => $status, 'valor' => $valorFinal]);
+    exit;
+}
+
+// ── Recalcula ifc_matches_troca para o usuário logado ────────────────────────
+// Lógica:
+//   Para cada outro usuário com álbum ativo:
+//     quantidade_match = figurinhas que EU tenho repetidas E o outro não tem
+//                      + figurinhas que o outro tem repetidas E eu não tenho
+//     score_match      = quantidade_match (pode evoluir com distância depois)
+//   Apaga registros antigos do usuário e reinsere os novos
+function matchRecalcular(PDO $db, array $usuario): void
+{
+    $albumId = $_POST['album_id'] ?? '';
+    if (!$albumId) responderErro(400, 'album_id obrigatório');
+    verificarDono($db, $albumId, $usuario['id']);
+
+    // Busca outros usuários que têm pelo menos um álbum ativo com figurinhas
+    $stmt = $db->prepare("
+        SELECT DISTINCT u.id, u.nome,
+            ST_Distance_Sphere(
+                POINT(:lng, :lat),
+                POINT(u.longitude, u.latitude)
+            ) / 1000 AS distancia_km
+        FROM " . tbl('usuarios') . " u
+        JOIN " . tbl('albuns')   . " a ON a.usuario_id = u.id AND a.ativo = 1
+        JOIN " . tbl('inventario'). " i ON i.album_id = a.id
+        WHERE u.id != :uid
+        GROUP BY u.id
+    ");
+    $stmt->execute([
+        ':uid' => $usuario['id'],
+        ':lat' => $usuario['latitude']  ?? 0,
+        ':lng' => $usuario['longitude'] ?? 0,
+    ]);
+    $outrosUsuarios = $stmt->fetchAll();
+
+    if (empty($outrosUsuarios)) {
+        // Limpa matches antigos e encerra
+        $db->prepare("DELETE FROM " . tbl('matches_troca') . " WHERE usuario_origem_id = :uid")
+           ->execute([':uid' => $usuario['id']]);
+        echo json_encode(['sucesso' => true, 'matches' => 0]);
+        exit;
+    }
+
+    // Minhas repetidas (quantidade > 1) no álbum escolhido
+    $stmt = $db->prepare("
+        SELECT figurinha_id FROM " . tbl('inventario') . "
+        WHERE album_id = :aid AND usuario_id = :uid AND quantidade > 1
+    ");
+    $stmt->execute([':aid' => $albumId, ':uid' => $usuario['id']]);
+    $minhasRepetidas = array_column($stmt->fetchAll(), 'figurinha_id');
+
+    // Minhas faltantes (quantidade = 0) no álbum escolhido
+    $stmt = $db->prepare("
+        SELECT f.id FROM " . tbl('figurinhas') . " f
+        LEFT JOIN " . tbl('inventario') . " i
+            ON i.figurinha_id = f.id AND i.album_id = :aid
+        WHERE COALESCE(i.quantidade, 0) = 0
+    ");
+    $stmt->execute([':aid' => $albumId]);
+    $minhasFaltantes = array_column($stmt->fetchAll(), 'id');
+
+    // Apaga matches antigos deste usuário
+    $db->prepare("DELETE FROM " . tbl('matches_troca') . " WHERE usuario_origem_id = :uid")
+       ->execute([':uid' => $usuario['id']]);
+
+    $totalMatches = 0;
+
+    foreach ($outrosUsuarios as $outro) {
+        // Melhor álbum do outro (mais completo)
+        $stmt = $db->prepare("
+            SELECT id FROM " . tbl('albuns') . "
+            WHERE usuario_id = :uid AND ativo = 1
+            ORDER BY percentual_conclusao DESC LIMIT 1
+        ");
+        $stmt->execute([':uid' => $outro['id']]);
+        $albumOutro = $stmt->fetchColumn();
+        if (!$albumOutro) continue;
+
+        // Repetidas do outro
+        $stmt = $db->prepare("
+            SELECT figurinha_id FROM " . tbl('inventario') . "
+            WHERE album_id = :aid AND usuario_id = :uid AND quantidade > 1
+        ");
+        $stmt->execute([':aid' => $albumOutro, ':uid' => $outro['id']]);
+        $repetidrasOutro = array_column($stmt->fetchAll(), 'figurinha_id');
+
+        // Faltantes do outro
+        $stmt = $db->prepare("
+            SELECT f.id FROM " . tbl('figurinhas') . " f
+            LEFT JOIN " . tbl('inventario') . " i
+                ON i.figurinha_id = f.id AND i.album_id = :aid
+            WHERE COALESCE(i.quantidade, 0) = 0
+        ");
+        $stmt->execute([':aid' => $albumOutro]);
+        $faltantesOutro = array_column($stmt->fetchAll(), 'id');
+
+        // Eu tenho repetida que ele precisa
+        $euTenhoEleNao = count(array_intersect($minhasRepetidas, $faltantesOutro));
+
+        // Ele tem repetida que eu preciso
+        $eleTenhoEuNao = count(array_intersect($repetidrasOutro, $minhasFaltantes));
+
+        $qtdMatch = $euTenhoEleNao + $eleTenhoEuNao;
+        if ($qtdMatch === 0) continue;
+
+        // Score simples: quantidade de matches (pode ponderar distância futuramente)
+        $score = $qtdMatch;
+
+        $db->prepare("
+            INSERT INTO " . tbl('matches_troca') . "
+                (id, usuario_origem_id, usuario_destino_id, quantidade_match, distancia_km, score_match)
+            VALUES (UUID(), :orig, :dest, :qtd, :dist, :score)
+        ")->execute([
+            ':orig'  => $usuario['id'],
+            ':dest'  => $outro['id'],
+            ':qtd'   => $qtdMatch,
+            ':dist'  => $outro['distancia_km'] ?? null,
+            ':score' => $score,
+        ]);
+
+        $totalMatches++;
+    }
+
+    echo json_encode(['sucesso' => true, 'matches' => $totalMatches]);
+    exit;
+}
+
+// ── Lista matches calculados com detalhes dos usuários ───────────────────────
+function matchListar(PDO $db, array $usuario): void
+{
+    $albumId = $_POST['album_id'] ?? '';
+    if (!$albumId) responderErro(400, 'album_id obrigatório');
+
+    $stmt = $db->prepare("
+        SELECT
+            m.id              AS match_id,
+            m.quantidade_match,
+            m.distancia_km,
+            m.score_match,
+            u.id              AS usuario_id,
+            u.nome,
+            u.avatar_url,
+            u.cidade,
+            u.estado,
+            u.contato_tipo,
+            u.contato_valor,
+            u.slug_publico
+        FROM " . tbl('matches_troca') . " m
+        JOIN " . tbl('usuarios')      . " u ON u.id = m.usuario_destino_id
+        WHERE m.usuario_origem_id = :uid
+        ORDER BY m.score_match DESC, m.distancia_km ASC
+        LIMIT 50
+    ");
+    $stmt->execute([':uid' => $usuario['id']]);
+    $matches = $stmt->fetchAll();
+
+    // Para cada match, busca quais figurinhas são o "cruzamento"
+    // (eu tenho repetida que ele precisa) para exibir no card
+    $minhasRepetidas = [];
+    if (!empty($matches)) {
+        $stmt = $db->prepare("
+            SELECT figurinha_id, f.codigo
+            FROM " . tbl('inventario') . " i
+            JOIN " . tbl('figurinhas') . " f ON f.id = i.figurinha_id
+            WHERE i.album_id = :aid AND i.usuario_id = :uid AND i.quantidade > 1
+            LIMIT 200
+        ");
+        $stmt->execute([':aid' => $albumId, ':uid' => $usuario['id']]);
+        $minhasRepetidas = array_column($stmt->fetchAll(), 'codigo', 'figurinha_id');
+    }
+
+    foreach ($matches as &$match) {
+        // Álbum principal do outro usuário
+        $stmt = $db->prepare("
+            SELECT id FROM " . tbl('albuns') . "
+            WHERE usuario_id = :uid AND ativo = 1
+            ORDER BY percentual_conclusao DESC LIMIT 1
+        ");
+        $stmt->execute([':uid' => $match['usuario_id']]);
+        $albumOutro = $stmt->fetchColumn();
+
+        $exemplos = [];
+        if ($albumOutro && !empty($minhasRepetidas)) {
+            // Pega até 5 figurinhas que ele precisa e eu tenho de sobra
+            $placeholders = implode(',', array_fill(0, count($minhasRepetidas), '?'));
+            $stmt = $db->prepare("
+                SELECT f.codigo
+                FROM " . tbl('figurinhas') . " f
+                LEFT JOIN " . tbl('inventario') . " i
+                    ON i.figurinha_id = f.id AND i.album_id = ?
+                WHERE f.id IN ($placeholders)
+                  AND COALESCE(i.quantidade, 0) = 0
+                LIMIT 5
+            ");
+            $params = array_merge([$albumOutro], array_keys($minhasRepetidas));
+            $stmt->execute($params);
+            $exemplos = array_column($stmt->fetchAll(), 'codigo');
+        }
+
+        $match['exemplos_oferta'] = $exemplos; // figurinhas que eu ofereço a ele
+    }
+    unset($match);
+
+    echo json_encode(['sucesso' => true, 'matches' => $matches]);
+    exit;
+}
+
+// ── Figurinhas do parceiro: o que ele oferece e o que ele precisa ────────────
+function parceirFigurinhas(PDO $db, array $usuario): void
+{
+    $slugParceiro = $_POST['slug_parceiro'] ?? '';
+    $meuAlbumId   = $_POST['meu_album_id'] ?? '';
+
+    if (!$slugParceiro || !$meuAlbumId) responderErro(400, 'Parâmetros obrigatórios');
+
+    verificarDono($db, $meuAlbumId, $usuario['id']);
+
+    // Busca o parceiro pelo slug
+    $stmt = $db->prepare("
+        SELECT id, nome, avatar_url, cidade, estado, contato_tipo, contato_valor
+        FROM " . tbl('usuarios') . "
+        WHERE slug_publico = :slug
+        LIMIT 1
+    ");
+    $stmt->execute([':slug' => $slugParceiro]);
+    $parceiro = $stmt->fetch();
+    if (!$parceiro) responderErro(404, 'Usuário não encontrado');
+
+    // Melhor álbum do parceiro
+    $stmt = $db->prepare("
+        SELECT id FROM " . tbl('albuns') . "
+        WHERE usuario_id = :uid AND ativo = 1
+        ORDER BY percentual_conclusao DESC LIMIT 1
+    ");
+    $stmt->execute([':uid' => $parceiro['id']]);
+    $albumParceiro = $stmt->fetchColumn();
+    if (!$albumParceiro) {
+        echo json_encode(['sucesso' => true, 'parceiro' => $parceiro, 'oferece' => [], 'precisa' => []]);
+        exit;
+    }
+
+    // ── O QUE ELE OFERECE ────────────────────────────────────────────────────
+    // Repetidas dele (qtd > 1), com status_troca — todas, inclusive bloqueadas
+    $stmt = $db->prepare("
+        SELECT
+            f.id            AS figurinha_id,
+            f.codigo,
+            f.numero,
+            f.tipo,
+            s.sigla         AS selecao_sigla,
+            s.nome          AS selecao_nome,
+            s.bandeira_url,
+            g.codigo        AS grupo_codigo,
+            i.quantidade,
+            i.status_troca,
+            i.valor_troca
+        FROM " . tbl('inventario') . " i
+        JOIN " . tbl('figurinhas') . " f ON f.id = i.figurinha_id
+        JOIN " . tbl('selecoes')   . " s ON s.id = f.selecao_id
+        LEFT JOIN " . tbl('grupos'). " g ON g.id = s.grupo_id
+        WHERE i.album_id   = :aid
+          AND i.usuario_id = :uid
+          AND i.quantidade > 1
+        ORDER BY g.ordem, s.sigla, f.numero
+    ");
+    $stmt->execute([':aid' => $albumParceiro, ':uid' => $parceiro['id']]);
+    $oferece = $stmt->fetchAll();
+
+    // ── O QUE ELE PRECISA (e eu tenho repetida) ──────────────────────────────
+    // Faltantes dele que eu tenho repetidas no meu álbum
+    $stmt = $db->prepare("
+        SELECT
+            f.id            AS figurinha_id,
+            f.codigo,
+            f.numero,
+            f.tipo,
+            s.sigla         AS selecao_sigla,
+            s.nome          AS selecao_nome,
+            s.bandeira_url,
+            g.codigo        AS grupo_codigo,
+            meu.quantidade  AS minha_quantidade,
+            meu.status_troca AS meu_status
+        FROM " . tbl('figurinhas') . " f
+        JOIN " . tbl('selecoes')   . " s  ON s.id = f.selecao_id
+        LEFT JOIN " . tbl('grupos'). " g  ON g.id = s.grupo_id
+        JOIN " . tbl('inventario') . " meu
+            ON meu.figurinha_id = f.id
+           AND meu.album_id     = :meu_aid
+           AND meu.quantidade   > 1
+        LEFT JOIN " . tbl('inventario') . " dele
+            ON dele.figurinha_id = f.id
+           AND dele.album_id     = :aid_parceiro
+        WHERE COALESCE(dele.quantidade, 0) = 0
+        ORDER BY g.ordem, s.sigla, f.numero
+    ");
+    $stmt->execute([':meu_aid' => $meuAlbumId, ':aid_parceiro' => $albumParceiro]);
+    $precisa = $stmt->fetchAll();
+
+    echo json_encode([
+        'sucesso'  => true,
+        'parceiro' => $parceiro,
+        'oferece'  => $oferece,
+        'precisa'  => $precisa,
+    ]);
+    exit;
+}
+
+// ── Favoritar / desfavoritar um colecionador ─────────────────────────────────
+function favoritoToggle(PDO $db, array $usuario): void
+{
+    $favoritoId = $_POST['favorito_id'] ?? '';
+    if (!$favoritoId) responderErro(400, 'favorito_id obrigatório');
+    if ($favoritoId === $usuario['id']) responderErro(400, 'Você não pode favoritar a si mesmo');
+
+    // Verifica se o usuário existe
+    $stmt = $db->prepare("SELECT id FROM " . tbl('usuarios') . " WHERE id = :id");
+    $stmt->execute([':id' => $favoritoId]);
+    if (!$stmt->fetch()) responderErro(404, 'Usuário não encontrado');
+
+    // Verifica se já é favorito
+    $stmt = $db->prepare("
+        SELECT id FROM " . tbl('favoritos') . "
+        WHERE usuario_id = :uid AND favorito_id = :fid
+    ");
+    $stmt->execute([':uid' => $usuario['id'], ':fid' => $favoritoId]);
+    $existe = $stmt->fetch();
+
+    if ($existe) {
+        // Remove favorito
+        $db->prepare("
+            DELETE FROM " . tbl('favoritos') . "
+            WHERE usuario_id = :uid AND favorito_id = :fid
+        ")->execute([':uid' => $usuario['id'], ':fid' => $favoritoId]);
+        echo json_encode(['sucesso' => true, 'favoritado' => false]);
     } else {
-        transfer.selecionadas.add(id);
-        card.classList.add('para-transferir');
+        // Adiciona favorito
+        $db->prepare("
+            INSERT INTO " . tbl('favoritos') . "
+                (id, usuario_id, favorito_id)
+            VALUES (UUID(), :uid, :fid)
+        ")->execute([':uid' => $usuario['id'], ':fid' => $favoritoId]);
+        echo json_encode(['sucesso' => true, 'favoritado' => true]);
     }
-    atualizarBarraTransfer();
+    exit;
 }
 
-function atualizarBarraTransfer() {
-    const n   = transfer.selecionadas.size;
-    const tot = transfer.figurinhas.length;
-    document.getElementById('msg-transfer').textContent = n === 0
-        ? `${tot} disponível(is) — clique para selecionar`
-        : `${n} selecionada(s)`;
-    document.getElementById('btn-transferir').disabled = n === 0;
-}
+// ── Lista colecionadores com score, distância e favorito ─────────────────────
+// Parâmetros POST:
+//   album_id  — álbum do usuário logado para calcular matches
+//   busca     — filtro por nome (opcional)
+//   ordem     — combinação de: favoritos, distancia, matches (separados por vírgula)
+//   limite    — quantos retornar (padrão 10, 0 = todos)
+function colecionadoresListar(PDO $db, array $usuario): void
+{
+    $albumId = $_POST['album_id'] ?? '';
+    $busca   = trim($_POST['busca']  ?? '');
+    $ordem   = $_POST['ordem']   ?? 'matches';
+    $limite  = (int)($_POST['limite'] ?? 10);
 
-function selecionarTodasTransfer() {
-    document.querySelectorAll('#transfer-grid .figurinha-card').forEach(card => {
-        if (card.style.display === 'none') return; // respeita o filtro de busca
-        transfer.selecionadas.add(card.dataset.id);
-        card.classList.add('para-transferir');
-    });
-    atualizarBarraTransfer();
-}
+    if (!$albumId) responderErro(400, 'album_id obrigatório');
 
-function limparTransfer() {
-    transfer.selecionadas.clear();
-    document.querySelectorAll('#transfer-grid .figurinha-card').forEach(c => c.classList.remove('para-transferir'));
-    atualizarBarraTransfer();
-}
+    // IDs de favoritos do usuário logado
+    $stmt = $db->prepare("
+        SELECT favorito_id FROM " . tbl('favoritos') . "
+        WHERE usuario_id = :uid
+    ");
+    $stmt->execute([':uid' => $usuario['id']]);
+    $favoritosIds = array_column($stmt->fetchAll(), 'favorito_id');
+    $favSet = array_flip($favoritosIds);
 
-function filtrarTransfer() {
-    const termo = document.getElementById('busca-transfer').value.toLowerCase().trim();
-    document.querySelectorAll('#transfer-grid [data-sigla]').forEach(bloco => {
-        const sigla = bloco.dataset.sigla?.toLowerCase() ?? '';
-        const nome  = bloco.dataset.nome  ?? '';
-        const baterSel = !termo || sigla.includes(termo) || nome.includes(termo);
-        let algum = false;
-        bloco.querySelectorAll('.figurinha-card').forEach(card => {
-            const ok = baterSel || card.dataset.codigo.toLowerCase().includes(termo);
-            card.style.display = ok ? '' : 'none';
-            if (ok) algum = true;
-        });
-        bloco.style.display = algum ? '' : 'none';
-    });
-}
+    // Busca todos os outros usuários com match calculado
+    $stmt = $db->prepare("
+        SELECT
+            u.id,
+            u.nome,
+            u.avatar_url,
+            u.cidade,
+            u.estado,
+            u.contato_tipo,
+            u.contato_valor,
+            u.slug_publico,
+            u.latitude,
+            u.longitude,
+            COALESCE(m.quantidade_match, 0) AS quantidade_match,
+            COALESCE(m.score_match, 0)      AS score_match,
+            COALESCE(m.distancia_km, NULL)  AS distancia_km
+        FROM " . tbl('usuarios') . " u
+        LEFT JOIN " . tbl('matches_troca') . " m
+            ON m.usuario_destino_id = u.id
+           AND m.usuario_origem_id  = :uid
+        WHERE u.id != :uid2
+        " . ($busca ? "AND u.nome LIKE :busca" : "") . "
+        ORDER BY u.nome ASC
+    ");
 
-async function executarTransferencia() {
-    const n = transfer.selecionadas.size;
-    if (n === 0) return;
+    $params = [':uid' => $usuario['id'], ':uid2' => $usuario['id']];
+    if ($busca) $params[':busca'] = '%' . $busca . '%';
+    $stmt->execute($params);
+    $todos = $stmt->fetchAll();
 
-    const nomeOrig = document.getElementById('sel-origem').options[document.getElementById('sel-origem').selectedIndex].text;
-    const nomeDest = document.getElementById('sel-destino').options[document.getElementById('sel-destino').selectedIndex].text;
-
-    if (!confirm(`Transferir ${n} figurinha(s)\nde "${nomeOrig}"\npara "${nomeDest}"?`)) return;
-
-    const btn = document.getElementById('btn-transferir');
-    btn.disabled    = true;
-    btn.textContent = '⏳ Transferindo...';
-
-    const resp = await fetch('/api/trocas', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: new URLSearchParams({
-            acao:             'transferir',
-            album_origem_id:  transfer.origemId,
-            album_destino_id: transfer.destinoId,
-            figurinha_ids:    JSON.stringify([...transfer.selecionadas]),
-        }),
-    });
-    const data = await resp.json();
-
-    btn.textContent = '✓ Transferir selecionadas';
-
-    if (data.sucesso) {
-        const msg = `✅ ${data.transferidas} transferida(s).`
-            + (data.ignoradas > 0 ? ` (${data.ignoradas} sem repetida disponível)` : '');
-        alert(msg);
-        await carregarTransferencia(); // recarrega o grid
-    } else {
-        alert('Erro: ' + (data.erro ?? 'desconhecido'));
-        btn.disabled = false;
+    // Enriquece com flag de favorito
+    foreach ($todos as &$u) {
+        $u['favorito'] = isset($favSet[$u['id']]);
     }
-}
+    unset($u);
 
-// ════════════════════════════════════════════════════════════════
-// SEÇÃO 1 + 2 — ÁLBUM PARA TROCAS COM OUTROS
-// ════════════════════════════════════════════════════════════════
+    // Ordena conforme critérios combinados escolhidos pelo usuário
+    $criterios = array_map('trim', explode(',', $ordem));
 
-async function trocarAlbum() {
-    trocas.albumId = document.getElementById('select-album').value || null;
+    usort($todos, function($a, $b) use ($criterios) {
+        foreach ($criterios as $criterio) {
+            switch ($criterio) {
+                case 'favoritos':
+                    $cmp = (int)$b['favorito'] <=> (int)$a['favorito'];
+                    if ($cmp !== 0) return $cmp;
+                    break;
 
-    if (!trocas.albumId) {
-        document.getElementById('conteudo-trocas').style.display = 'none';
-        document.getElementById('estado-inicial').style.display  = 'block';
-        return;
-    }
-    document.getElementById('estado-inicial').style.display  = 'none';
-    document.getElementById('conteudo-trocas').style.display = 'block';
+                case 'distancia':
+                    // Sem localização vai para o final
+                    $da = $a['distancia_km'] ?? PHP_FLOAT_MAX;
+                    $db2 = $b['distancia_km'] ?? PHP_FLOAT_MAX;
+                    $cmp = $da <=> $db2;
+                    if ($cmp !== 0) return $cmp;
+                    break;
 
-    await Promise.all([carregarRepetidas(), recalcularEListarMatches()]);
-}
-
-// ── Seção 1: Minhas repetidas ─────────────────────────────────────────────
-async function carregarRepetidas() {
-    const resp = await fetch('/api/trocas', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `acao=minhas_repetidas&album_id=${trocas.albumId}`,
-    });
-    const data = await resp.json();
-
-    const grid  = document.getElementById('grid-repetidas');
-    const vazio = document.getElementById('estado-sem-repetidas');
-    const badge = document.getElementById('badge-repetidas');
-
-    if (!data.sucesso || data.figurinhas.length === 0) {
-        grid.innerHTML = ''; grid.style.display = 'none';
-        vazio.style.display = 'block'; badge.textContent = '0';
-        return;
-    }
-    vazio.style.display = 'none';
-    grid.style.display  = 'block';
-    badge.textContent   = data.figurinhas.length;
-    renderizarRepetidas(data.figurinhas);
-}
-
-function renderizarRepetidas(figurinhas) {
-    const grid = document.getElementById('grid-repetidas');
-    grid.innerHTML = '';
-
-    const grupos = {};
-    for (const f of figurinhas) {
-        const gKey = f.grupo_codigo || 'especial';
-        if (!grupos[gKey]) grupos[gKey] = {};
-        if (!grupos[gKey][f.selecao_sigla]) {
-            grupos[gKey][f.selecao_sigla] = { nome: f.selecao_nome, bandeira: f.bandeira_url, itens: [] };
+                case 'matches':
+                    $cmp = (int)$b['score_match'] <=> (int)$a['score_match'];
+                    if ($cmp !== 0) return $cmp;
+                    break;
+            }
         }
-        grupos[gKey][f.selecao_sigla].itens.push(f);
-    }
-
-    for (const [gKey, selecoes] of Object.entries(grupos)) {
-        const divG = document.createElement('div');
-        const tit  = document.createElement('div');
-        tit.className = 'grupo-titulo';
-        tit.textContent = gKey === 'especial' ? 'Especiais' : `Grupo ${gKey}`;
-        divG.appendChild(tit);
-
-        for (const [sigla, sel] of Object.entries(selecoes)) {
-            const divS = document.createElement('div');
-            divS.dataset.sigla = sigla;
-
-            const mini = document.createElement('div');
-            mini.className = 'selecao-mini';
-            mini.innerHTML = `
-                <img src="${sel.bandeira}" alt="${sigla}" onerror="this.style.display='none'">
-                <span class="selecao-sigla-badge">${sigla}</span>
-                <span>${sel.nome}</span>`;
-            divS.appendChild(mini);
-
-            const subGrid = document.createElement('div');
-            subGrid.className = 'figurinhas-grid';
-            for (const f of sel.itens) subGrid.appendChild(criarCardRepetida(f));
-
-            divS.appendChild(subGrid);
-            divG.appendChild(divS);
-        }
-        grid.appendChild(divG);
-    }
-    aplicarFiltroStatus();
-}
-
-function criarCardRepetida(f) {
-    const statusEmoji = { livre:'🟢', troca:'🔄', venda:'💰', bloqueada:'🔒' };
-    const card = document.createElement('div');
-    card.className = `figurinha-card tem${f.quantidade > 1 ? ' repetida' : ''}`;
-    card.id = `rep-${f.figurinha_id}`;
-    card.dataset.id     = f.figurinha_id;
-    card.dataset.codigo = f.codigo;
-    card.dataset.status = f.status_troca;
-    card.dataset.valor  = f.valor_troca ?? '';
-    card.style.position = 'relative';
-    card.style.cursor   = 'pointer';
-    card.innerHTML = `
-        <span class="fig-codigo">${f.codigo}</span>
-        <div class="fig-qtd" style="font-size:.8rem;text-align:center">×${f.quantidade}</div>
-        <div class="fig-status-badge">${statusEmoji[f.status_troca] ?? '🟢'}</div>`;
-    configurarLongPress(card, () => abrirModalStatus(f));
-    return card;
-}
-
-function filtrarStatus(btn) {
-    document.querySelectorAll('.status-pill').forEach(p => p.classList.remove('ativa'));
-    btn.classList.add('ativa');
-    trocas.filtroStatus = btn.dataset.status;
-    aplicarFiltroStatus();
-}
-
-function aplicarFiltroStatus() {
-    document.querySelectorAll('#grid-repetidas .figurinha-card').forEach(card => {
-        card.style.display = (!trocas.filtroStatus || card.dataset.status === trocas.filtroStatus) ? '' : 'none';
-    });
-}
-
-function abrirModalStatus(f) {
-    trocas.figurinhaSelecionada = f;
-    document.getElementById('modal-titulo-fig').textContent = `Figurinha ${f.codigo}`;
-    document.getElementById('campo-valor').style.display = f.status_troca === 'venda' ? 'block' : 'none';
-    document.getElementById('input-valor').value = f.valor_troca ?? '';
-    document.getElementById('modal-status').style.display = 'flex';
-}
-
-function definirStatus(status) {
-    document.getElementById('campo-valor').style.display = status === 'venda' ? 'block' : 'none';
-    trocas.statusPendente = status;
-}
-
-async function confirmarStatus() {
-    const status = trocas.statusPendente ?? trocas.figurinhaSelecionada.status_troca;
-    const valor  = document.getElementById('input-valor').value;
-    const f      = trocas.figurinhaSelecionada;
-
-    const resp = await fetch('/api/trocas', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: new URLSearchParams({
-            acao: 'status_figurinha', album_id: trocas.albumId,
-            figurinha_id: f.figurinha_id, status, valor,
-        }),
-    });
-    const data = await resp.json();
-
-    if (data.sucesso) {
-        const card = document.getElementById(`rep-${f.figurinha_id}`);
-        if (card) {
-            card.dataset.status = data.status;
-            const statusEmoji = { livre:'🟢', troca:'🔄', venda:'💰', bloqueada:'🔒' };
-            card.querySelector('.fig-status-badge').textContent = statusEmoji[data.status];
-        }
-        document.getElementById('modal-status').style.display = 'none';
-        trocas.statusPendente = null;
-        aplicarFiltroStatus();
-    } else {
-        alert('Erro ao salvar: ' + (data.erro ?? 'desconhecido'));
-    }
-}
-
-// ── Seção 2: Matches ──────────────────────────────────────────────────────
-async function recalcularEListarMatches() {
-    document.getElementById('lista-matches').innerHTML = '';
-    document.getElementById('estado-sem-matches').style.display = 'none';
-    document.getElementById('estado-calculando').style.display  = 'block';
-
-    await fetch('/api/trocas', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `acao=match_recalcular&album_id=${trocas.albumId}`,
+        // Desempate: nome alfabético
+        return strcmp($a['nome'], $b['nome']);
     });
 
-    const resp = await fetch('/api/trocas', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `acao=match_listar&album_id=${trocas.albumId}`,
-    });
-    const data = await resp.json();
-
-    document.getElementById('estado-calculando').style.display = 'none';
-
-    const lista = document.getElementById('lista-matches');
-    const badge = document.getElementById('badge-matches');
-    const vazio = document.getElementById('estado-sem-matches');
-
-    if (!data.sucesso || data.matches.length === 0) {
-        vazio.style.display = 'block'; badge.textContent = '0'; return;
+    // Se busca começar com o termo → prioriza (começa com > contém)
+    if ($busca) {
+        $prefixo = array_filter($todos, fn($u) =>
+            stripos($u['nome'], $busca) === 0
+        );
+        $contem  = array_filter($todos, fn($u) =>
+            stripos($u['nome'], $busca) !== 0
+        );
+        $todos = array_values(array_merge($prefixo, $contem));
     }
-    badge.textContent = data.matches.length;
-    for (const m of data.matches) lista.appendChild(criarCardMatch(m));
-}
 
-function criarCardMatch(m) {
-    const avatar  = m.avatar_url ?? 'https://ui-avatars.com/api/?name=' + encodeURIComponent(m.nome) + '&size=44';
-    const loc     = [m.cidade, m.estado].filter(Boolean).join(', ') || 'Localização não informada';
-    const dist    = m.distancia_km ? `· ${Math.round(m.distancia_km)} km` : '';
-    const exemplos = m.exemplos_oferta?.length
-        ? `Eu ofereço: ${m.exemplos_oferta.join(', ')}${m.exemplos_oferta.length === 5 ? '...' : ''}`
-        : '';
-    const card = document.createElement('div');
-    card.className = 'match-card';
-    card.innerHTML = `
-        <img class="match-avatar" src="${avatar}" alt="${m.nome}"
-             onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(m.nome)}&size=44'">
-        <div class="match-info">
-            <div class="match-nome">${m.nome}</div>
-            <div class="match-loc">${loc} ${dist}</div>
-            ${exemplos ? `<div class="match-exemplos">${exemplos}</div>` : ''}
-        </div>
-        <span class="match-score">${m.quantidade_match} match${m.quantidade_match !== 1 ? 'es' : ''}</span>
-        <button class="match-btn" onclick='abrirContato(${JSON.stringify(m)})'>Contato</button>`;
-    return card;
-}
+    $total = count($todos);
 
-function abrirContato(m) {
-    document.getElementById('modal-contato-nome').textContent = m.nome;
-    const corpo = document.getElementById('modal-contato-corpo');
-    corpo.innerHTML = '';
-
-    if (!m.contato_tipo || !m.contato_valor) {
-        corpo.innerHTML = `
-            <div class="contato-linha">
-                <span class="contato-icone">ℹ️</span>
-                <div><div>Contato não informado</div>
-                <small>Este usuário ainda não cadastrou um meio de contato.</small></div>
-            </div>`;
-    } else {
-        const icones = { whatsapp:'💬', telegram:'✈️', email:'📧' };
-        let link = '';
-        if (m.contato_tipo === 'whatsapp') {
-            link = `<a class="contato-link" href="https://wa.me/${m.contato_valor.replace(/\D/g,'')}" target="_blank">Abrir WhatsApp</a>`;
-        } else if (m.contato_tipo === 'telegram') {
-            link = `<a class="contato-link" href="https://t.me/${m.contato_valor.replace('@','')}" target="_blank">Abrir Telegram</a>`;
-        } else {
-            link = `<a class="contato-link" href="mailto:${m.contato_valor}">${m.contato_valor}</a>`;
-        }
-        corpo.innerHTML = `
-            <div class="contato-linha">
-                <span class="contato-icone">${icones[m.contato_tipo] ?? '📞'}</span>
-                <div><div>${m.contato_valor}</div>
-                <small>${m.contato_tipo.charAt(0).toUpperCase() + m.contato_tipo.slice(1)}</small></div>
-            </div>
-            <div style="text-align:center;margin-top:.5rem">${link}</div>`;
+    // Aplica limite (0 = todos)
+    if ($limite > 0) {
+        $todos = array_slice($todos, 0, $limite);
     }
-    document.getElementById('modal-contato').style.display = 'flex';
+
+    echo json_encode([
+        'sucesso'       => true,
+        'colecionadores'=> $todos,
+        'total'         => $total,
+        'tem_mais'      => $limite > 0 && $total > $limite,
+    ]);
+    exit;
 }
 
-// ── Utilitários ───────────────────────────────────────────────────────────
-function configurarLongPress(el, callback) {
-    let timer = null, moveu = false;
-    el.addEventListener('touchstart', () => {
-        moveu = false;
-        timer = setTimeout(() => { if (!moveu) { callback(); if(navigator.vibrate) navigator.vibrate(40); } }, 500);
-    }, { passive: true });
-    el.addEventListener('touchmove', () => { moveu = true; clearTimeout(timer); }, { passive: true });
-    el.addEventListener('touchend',  () => clearTimeout(timer));
-    el.addEventListener('contextmenu', e => { e.preventDefault(); callback(); });
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function verificarDono(PDO $db, string $albumId, string $usuarioId): void
+{
+    $stmt = $db->prepare("
+        SELECT id FROM " . tbl('albuns') . "
+        WHERE id = :id AND usuario_id = :uid AND ativo = 1
+    ");
+    $stmt->execute([':id' => $albumId, ':uid' => $usuarioId]);
+    if (!$stmt->fetch()) responderErro(403, 'Álbum não encontrado ou sem permissão');
 }
 
-function fecharModal(e) {
-    if (e.target.classList.contains('modal-overlay')) e.target.style.display = 'none';
-}
-</script>
+function recalcularAlbum(PDO $db, string $albumId): void
+{
+    $stmt = $db->prepare("SELECT COUNT(*) FROM " . tbl('figurinhas'));
+    $stmt->execute();
+    $total = (int) $stmt->fetchColumn();
 
-<?php layoutFim(); ?>
+    $stmt = $db->prepare("
+        SELECT COUNT(*) FROM " . tbl('inventario') . "
+        WHERE album_id = :aid AND quantidade > 0
+    ");
+    $stmt->execute([':aid' => $albumId]);
+    $tem = (int) $stmt->fetchColumn();
+
+    $stmt = $db->prepare("
+        SELECT COALESCE(SUM(GREATEST(quantidade - 1, 0)), 0)
+        FROM " . tbl('inventario') . " WHERE album_id = :aid
+    ");
+    $stmt->execute([':aid' => $albumId]);
+    $repetidas = (int) $stmt->fetchColumn();
+
+    $pct   = $total > 0 ? round(($tem / $total) * 100, 2) : 0;
+    $faltam = $total - $tem;
+
+    $db->prepare("
+        UPDATE " . tbl('albuns') . "
+        SET percentual_conclusao = :pct,
+            total_faltantes      = :falt,
+            total_repetidas      = :rep
+        WHERE id = :id
+    ")->execute([':pct' => $pct, ':falt' => $faltam, ':rep' => $repetidas, ':id' => $albumId]);
+}
+
+function responderErro(int $codigo, string $msg): never
+{
+    http_response_code($codigo);
+    echo json_encode(['erro' => $msg]);
+    exit;
+}
