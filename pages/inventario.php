@@ -251,13 +251,11 @@ layoutInicio('Inventário — ' . $album['nome']);
                 <div class="figurinhas-grid">
                     <?php foreach ($selecao['figurinhas'] as $fig):
                         $statusEmoji = [
-                            'livre'     => '🟢',
-                            'troca'     => '🔄',
                             'venda'     => '💰',
                             'bloqueada' => '🔒',
                         ];
-                        $emoji = $fig['qtd'] > 0
-                            ? ($statusEmoji[$fig['status_troca']] ?? '🟢')
+                        $emoji = $fig['qtd'] > 0 && $fig['status_troca'] !== 'livre'
+                            ? ($statusEmoji[$fig['status_troca']] ?? '')
                             : '';
                     ?>
                         <div class="figurinha-card <?= $fig['qtd'] > 0 ? 'tem' : '' ?> <?= $fig['qtd'] > 1 ? 'repetida' : '' ?>"
@@ -280,15 +278,11 @@ layoutInicio('Inventário — ' . $album['nome']);
                                     <span class="fig-sinal">+</span>
                                 </div>
                             </div>
-                            <?php if ($fig['qtd'] > 0): ?>
-                                <div class="fig-status-badge" id="badge-<?= $fig['id'] ?>"
-                                     data-status="<?= htmlspecialchars($fig['status_troca']) ?>">
-                                    <?= $emoji ?>
-                                </div>
-                            <?php else: ?>
-                                <div class="fig-status-badge" id="badge-<?= $fig['id'] ?>"
-                                     data-status="livre" style="display:none"></div>
-                            <?php endif; ?>
+                            <div class="fig-status-badge" id="badge-<?= $fig['id'] ?>"
+                                 data-status="<?= htmlspecialchars($fig['status_troca']) ?>"
+                                 style="<?= $emoji ? '' : 'display:none' ?>">
+                                <?= $emoji ?>
+                            </div>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -573,12 +567,10 @@ async function atualizar(figurinhaId, albumId, acao) {
 
     // Mostra/oculta badge conforme quantidade
     if (data.quantidade > 0) {
-        badge.style.display = '';
+        atualizarBadge(figurinhaId, card.dataset.status);
     } else {
-        badge.style.display = 'none';
-        // Zera status quando vai a 0
-        card.dataset.status  = 'livre';
-        badge.dataset.status = 'livre';
+        card.dataset.status = 'livre';
+        atualizarBadge(figurinhaId, 'livre');
     }
 
     // Atualiza barra e contagem da seleção
@@ -750,9 +742,8 @@ async function aplicarStatusMassa() {
         const data = await resp.json();
         if (data.sucesso) {
             const badge = document.getElementById(`badge-${figId}`);
-            card.dataset.status  = data.status;
-            badge.dataset.status = data.status;
-            badge.textContent    = statusEmoji[data.status];
+            card.dataset.status = data.status;
+            atualizarBadge(figId, data.status);
         }
     }
 
@@ -798,7 +789,21 @@ async function aplicarQtdMassa(acao) {
 let figSelecionada = null;
 let statusPendente = null;
 
-const statusEmoji = { livre:'🟢', venda:'💰', bloqueada:'🔒' };
+const statusEmoji = { venda:'💰', bloqueada:'🔒' };
+
+function atualizarBadge(figId, status) {
+    const badge = document.getElementById(`badge-${figId}`);
+    if (!badge) return;
+    const emoji = statusEmoji[status] ?? '';
+    badge.dataset.status = status;
+    if (emoji) {
+        badge.textContent    = emoji;
+        badge.style.display  = '';
+    } else {
+        badge.textContent    = '';
+        badge.style.display  = 'none';
+    }
+}
 
 function abrirModalStatus(figId, codigo, statusAtual) {
     figSelecionada = { id: figId, codigo };
@@ -843,11 +848,9 @@ async function confirmarStatus() {
     const data = await resp.json();
 
     if (data.sucesso) {
-        const card  = document.getElementById(`fig-${figSelecionada.id}`);
-        const badge = document.getElementById(`badge-${figSelecionada.id}`);
-        card.dataset.status  = data.status;
-        badge.dataset.status = data.status;
-        badge.textContent    = statusEmoji[data.status];
+        const card = document.getElementById(`fig-${figSelecionada.id}`);
+        card.dataset.status = data.status;
+        atualizarBadge(figSelecionada.id, data.status);
         document.getElementById('modal-status').style.display = 'none';
         statusPendente = null;
         aplicarFiltros();

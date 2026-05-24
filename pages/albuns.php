@@ -252,16 +252,15 @@ layoutInicio('Meus Álbuns');
         </div>
 
         <div id="modal-etapa2" style="display:none">
-            <h3>Para onde vão as sobras?</h3>
-            <p style="margin:.5rem 0 1rem;font-size:.85rem;color:#666;">
-                Você pode selecionar múltiplos álbuns.<br><br>
-                Se nenhum for marcado, as sobras irão automaticamente
-                para o álbum com mais repetidas.
+            <h3>Para quais álbuns distribuir?</h3>
+            <p style="margin:.5rem 0 .75rem;font-size:.85rem;color:#666;">
+                Marque os álbuns que receberão as figurinhas.<br>
+                Se nenhum for marcado, todos receberão.
             </p>
             <div id="modal-lista-albuns" class="modal-opcoes"></div>
-            <div class="modal-acoes">
-                <button class="btn btn-primary" onclick="confirmarDistribuir()">Confirmar</button>
-                <button class="btn btn-sm" onclick="voltarModal()">← Voltar</button>
+            <div class="modal-acoes" style="margin-top:1rem">
+                <button class="btn btn-primary" onclick="confirmarDistribuir()">Distribuir →</button>
+                <button class="btn btn-sm" onclick="mostrarEtapa(1)">← Voltar</button>
             </div>
         </div>
 
@@ -338,20 +337,19 @@ async function avancarModal() {
     if (acao === 'descartar') {
         mostrarEtapa(3);
         document.getElementById('modal-progresso-msg').textContent = 'Descartando álbum...';
-
         const resp = await fetch('/api/albuns', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: `acao=descartar&album_id=${modalAlbumId}`
         });
-        const data = await resp.json();
-
+        await resp.json();
         mostrarEtapa(4);
         document.getElementById('modal-resultado').innerHTML =
             '<p style="color:#666">Álbum deletado. Todas as figurinhas foram descartadas.</p>';
         return;
     }
 
+    // Distribuir — busca álbuns disponíveis para etapa 2
     mostrarEtapa(3);
     document.getElementById('modal-progresso-msg').textContent = 'Carregando álbuns...';
 
@@ -364,36 +362,38 @@ async function avancarModal() {
 
     const lista = document.getElementById('modal-lista-albuns');
     lista.innerHTML = '';
-    data.albuns.forEach(a => {
-        lista.innerHTML += `
-            <label class="checkbox-label">
-                <input type="checkbox" name="album_sobras[]"
-                       class="album-destino" value="${a.id}">
-                ${a.nome}
-                <span style="color:#888;font-size:.8rem">
-                    (${a.total_repetidas} repetidas)
-                </span>
-            </label>`;
-    });
+
+    if (!data.albuns || data.albuns.length === 0) {
+        lista.innerHTML = '<p style="color:#888;font-size:.85rem">Nenhum outro álbum encontrado.</p>';
+    } else {
+        data.albuns.forEach(a => {
+            lista.innerHTML += `
+                <label class="checkbox-label">
+                    <input type="checkbox" name="album_destinos[]" value="${a.id}" checked>
+                    ${a.nome}
+                    <span style="color:#888;font-size:.8rem">
+                        (${a.total_faltantes} faltantes · ${a.total_repetidas} repetidas)
+                    </span>
+                </label>`;
+        });
+    }
     mostrarEtapa(2);
 }
 
-function voltarModal() { mostrarEtapa(1); }
-
 async function confirmarDistribuir() {
-    const albumSobrasSelecionados = [...document.querySelectorAll('input[name="album_sobras[]"]:checked')]
+    const destSelecionados = [...document.querySelectorAll('input[name="album_destinos[]"]:checked')]
         .map(el => el.value);
-    const albumSobras = encodeURIComponent(albumSobrasSelecionados.join(','));
 
     mostrarEtapa(3);
 
     const msgs = [
         'Distribuindo figurinhas...',
-        'Verificando álbuns...',
-        'Enviando sobras...',
+        'Completando coleções...',
+        'Balanceando repetidas...',
         'Recalculando estatísticas...',
     ];
     let msgIdx = 0;
+    document.getElementById('modal-progresso-msg').textContent = msgs[0];
     const intervalo = setInterval(() => {
         msgIdx = (msgIdx + 1) % msgs.length;
         document.getElementById('modal-progresso-msg').textContent = msgs[msgIdx];
@@ -402,16 +402,21 @@ async function confirmarDistribuir() {
     const resp = await fetch('/api/albuns', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `acao=distribuir&album_id=${encodeURIComponent(modalAlbumId)}&album_sobras=${albumSobras}`
+        body: `acao=distribuir&album_id=${encodeURIComponent(modalAlbumId)}&album_destinos=${encodeURIComponent(destSelecionados.join(','))}`
     });
     const data = await resp.json();
 
     clearInterval(intervalo);
     mostrarEtapa(4);
-    document.getElementById('modal-resultado').innerHTML = `
-        <p>✓ <strong>${data.distribuidas}</strong> figurinhas distribuídas entre os álbuns</p>
-        ${data.sobras > 0 ? `<p>✓ <strong>${data.sobras}</strong> sobras enviadas para o álbum selecionado</p>` : ''}
-    `;
+
+    if (data.sucesso) {
+        document.getElementById('modal-resultado').innerHTML = `
+            <p>✓ <strong>${data.distribuidas}</strong> figurinhas distribuídas entre os álbuns</p>
+        `;
+    } else {
+        document.getElementById('modal-resultado').innerHTML =
+            `<p style="color:red">Erro: ${data.erro ?? 'desconhecido'}</p>`;
+    }
 }
 </script>
 
