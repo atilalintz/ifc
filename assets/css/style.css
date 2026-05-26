@@ -69,7 +69,33 @@ body {
     white-space: nowrap;
 }
 .header nav a:hover { color: var(--amarelo); }
-
+/* ================================
+   Subnav de Trocas — adicionar ao style.css
+   ================================ */
+.trocas-subnav {
+    background: rgba(0,0,0,.18);
+    border-top: 1px solid rgba(255,255,255,.1);
+    padding: .3rem 0;
+}
+.trocas-subnav .container {
+    display: flex;
+    gap: .25rem;
+    align-items: center;
+}
+.subnav-link {
+    color: rgba(255,255,255,.75);
+    text-decoration: none;
+    font-size: .82rem;
+    font-weight: 600;
+    padding: .25rem .65rem;
+    border-radius: 20px;
+    transition: background .15s, color .15s;
+    white-space: nowrap;
+}
+.subnav-link:hover { color: #fff; background: rgba(255,255,255,.12); }
+.subnav-link.ativa  { background: var(--amarelo); color: var(--azul); }
+.header nav a.nav-ativa { color: var(--amarelo); font-weight: 700; }
+.avatar-link { display:flex; align-items:center; }
 /* Header — usuário logado */
 .header-usuario {
     display: flex;

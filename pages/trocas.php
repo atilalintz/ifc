@@ -1,792 +1,395 @@
 <?php
-// api/trocas.php — Transferência e trocas entre usuários
+// pages/trocas.php — Página de escolha entre trocas internas e externas
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/session.php';
-
-header('Content-Type: application/json');
-requireLogin();
+require_once __DIR__ . '/layout.php';
 
 $usuario = usuarioLogado();
 $db      = getDB();
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['erro' => 'Método não permitido']);
-    exit;
+// Álbuns ordenados por mais repetidas primeiro
+$stmt = $db->prepare("
+    SELECT id, nome, total_repetidas, percentual_conclusao, total_faltantes
+    FROM " . tbl('albuns') . "
+    WHERE usuario_id = :uid AND ativo = 1
+    ORDER BY total_repetidas DESC, percentual_conclusao DESC
+");
+$stmt->execute([':uid' => $usuario['id']]);
+$albuns = $stmt->fetchAll();
+
+// Álbum padrão = primeiro da lista (mais repetidas)
+$albumPadrao = $albuns[0] ?? null;
+
+layoutInicio('Trocas — Copa 2026');
+?>
+
+<div class="inventario-header">
+    <div>
+        <a href="/albuns" class="btn-voltar">← Álbuns</a>
+        <h1 class="page-title" style="margin-bottom:.25rem">Trocas</h1>
+    </div>
+</div>
+
+<!-- Seletor de álbum ───────────────────────────────────────────────────── -->
+<div class="trocas-album-bar">
+    <label style="font-weight:600;font-size:.9rem;white-space:nowrap">📚 Álbum:</label>
+    <select id="select-album" onchange="trocarAlbum()">
+        <?php foreach ($albuns as $a): ?>
+            <option value="<?= $a['id'] ?>"
+                    <?= $albumPadrao && $a['id'] === $albumPadrao['id'] ? 'selected' : '' ?>>
+                <?= htmlspecialchars($a['nome']) ?>
+                (<?= $a['total_repetidas'] ?> repetidas)
+            </option>
+        <?php endforeach; ?>
+    </select>
+</div>
+
+<!-- Conteúdo principal ─────────────────────────────────────────────────── -->
+<div class="trocas-escolha-grid">
+
+    <!-- ══ Internas ══════════════════════════════════════════════════════ -->
+    <div class="trocas-escolha-card">
+        <div class="trocas-escolha-titulo">
+            <span class="trocas-escolha-icone">↔️</span>
+            <div>
+                <h2>Trocas Internas</h2>
+                <p>Transfira figurinhas entre seus próprios álbuns</p>
+            </div>
+        </div>
+
+        <div id="lista-albuns-internos" class="trocas-lista-albuns">
+            <?php if (empty($albuns)): ?>
+                <p class="trocas-lista-vazia">Nenhum álbum cadastrado.</p>
+            <?php else: ?>
+                <?php foreach ($albuns as $a):
+                    $pct = number_format($a['percentual_conclusao'], 1);
+                    $barW = min(100, (float)$a['percentual_conclusao']);
+                ?>
+                    <a href="/trocas/internas?origem=<?= $a['id'] ?>"
+                       class="trocas-album-item">
+                        <div class="trocas-album-item-info">
+                            <span class="trocas-album-item-nome">
+                                <?= htmlspecialchars($a['nome']) ?>
+                            </span>
+                            <span class="trocas-album-item-meta">
+                                <?= $pct ?>% · <?= $a['total_faltantes'] ?> faltantes · <?= $a['total_repetidas'] ?> repetidas
+                            </span>
+                        </div>
+                        <div class="trocas-album-item-barra">
+                            <div style="width:<?= $barW ?>%"></div>
+                        </div>
+                    </a>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+
+        <a href="/trocas/internas" class="trocas-escolha-btn">
+            Acessar Internas →
+        </a>
+    </div>
+
+    <!-- ══ Externas ══════════════════════════════════════════════════════ -->
+    <div class="trocas-escolha-card">
+        <div class="trocas-escolha-titulo">
+            <span class="trocas-escolha-icone">🤝</span>
+            <div>
+                <h2>Trocas Externas</h2>
+                <p>Encontre parceiros e troque com outros colecionadores</p>
+            </div>
+        </div>
+
+        <!-- Busca de colecionadores -->
+        <div class="trocas-busca-wrap">
+            <input type="text" id="busca-colecionador"
+                   placeholder="🔍 Buscar colecionador..."
+                   oninput="buscarColecionadores()">
+        </div>
+
+        <!-- Filtros de ordenação combináveis -->
+        <div class="trocas-ordem-filtros">
+            <button class="trocas-ordem-btn ativo" data-ordem="matches"
+                    onclick="toggleOrdem(this)">🤝 Matches</button>
+            <button class="trocas-ordem-btn" data-ordem="distancia"
+                    onclick="toggleOrdem(this)">📍 Distância</button>
+            <button class="trocas-ordem-btn" data-ordem="favoritos"
+                    onclick="toggleOrdem(this)">⭐ Favoritos</button>
+        </div>
+
+        <!-- Lista de colecionadores -->
+        <div id="lista-colecionadores" class="trocas-lista-coletores">
+            <div class="trocas-lista-vazia">⏳ Carregando...</div>
+        </div>
+
+        <div id="btn-ver-todos-wrap" style="display:none;margin-top:.75rem">
+            <a href="/trocas/externas" class="trocas-escolha-btn">
+                Ver todos os parceiros →
+            </a>
+        </div>
+
+        <a href="/trocas/externas" class="trocas-escolha-btn" style="margin-top:.5rem">
+            Acessar Externas →
+        </a>
+    </div>
+
+</div>
+
+<style>
+/* ── Album bar ────────────────────────────────────────────────── */
+.trocas-album-bar {
+    display: flex; align-items: center; gap: .75rem;
+    background: #fff; border: 1px solid var(--borda);
+    border-radius: var(--radius); padding: .6rem .85rem;
+    margin-bottom: 1.25rem; flex-wrap: wrap;
+}
+.trocas-album-bar select {
+    flex: 1; min-width: 180px;
+    padding: .4rem .6rem; border-radius: 6px;
+    border: 1px solid #ddd; font-size: .9rem;
+    background: #fafafa;
 }
 
-$acao = $_POST['acao'] ?? '';
+/* ── Grid de escolha ──────────────────────────────────────────── */
+.trocas-escolha-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+.trocas-escolha-card {
+    background: #fff; border: 1px solid var(--borda);
+    border-radius: 12px; padding: 1.25rem;
+    display: flex; flex-direction: column; gap: .85rem;
+}
+.trocas-escolha-titulo {
+    display: flex; align-items: flex-start; gap: .75rem;
+}
+.trocas-escolha-icone { font-size: 2rem; flex-shrink: 0; }
+.trocas-escolha-titulo h2 { font-size: 1rem; margin: 0 0 .2rem; color: var(--verde); }
+.trocas-escolha-titulo p  { font-size: .82rem; color: #888; margin: 0; }
 
-// ── Roteador de ações ────────────────────────────────────────────────────────
-match ($acao) {
-    'transferir'       => transferir($db, $usuario),
-    'figurinhas_album' => figurinhasAlbum($db, $usuario),
-    'match_recalcular' => matchRecalcular($db, $usuario),
-    'match_listar'         => matchListar($db, $usuario),
-    'status_figurinha'     => statusFigurinha($db, $usuario),
-    'minhas_repetidas'     => minhasRepetidas($db, $usuario),
-    'parceiro_figurinhas'  => parceirFigurinhas($db, $usuario),
-    'favorito_toggle'      => favoritoToggle($db, $usuario),
-    'colecionadores_listar'=> colecionadoresListar($db, $usuario),
-    default                => responderErro(400, 'Ação inválida'),
-};
+.trocas-escolha-btn {
+    display: block; text-align: center;
+    padding: .55rem 1rem; border-radius: 8px;
+    background: var(--verde); color: #fff;
+    font-size: .88rem; font-weight: 700;
+    text-decoration: none; margin-top: auto;
+    transition: opacity .2s;
+}
+.trocas-escolha-btn:hover { opacity: .88; }
 
-// ── Retorna figurinhas de um álbum para popular o grid ───────────────────────
-// Usada pelo JS ao trocar o álbum selecionado no <select>
-function figurinhasAlbum(PDO $db, array $usuario): void
-{
-    $albumId = $_POST['album_id'] ?? '';
-    $modo    = $_POST['modo']     ?? 'origem'; // 'origem' = repetidas | 'destino' = faltantes
+/* ── Lista de álbuns internos ─────────────────────────────────── */
+.trocas-lista-albuns {
+    display: flex; flex-direction: column; gap: .4rem;
+    max-height: 240px; overflow-y: auto;
+}
+.trocas-album-item {
+    display: flex; flex-direction: column; gap: .2rem;
+    padding: .5rem .65rem; border-radius: 8px;
+    border: 1px solid #eee; background: #fafafa;
+    text-decoration: none; color: var(--texto);
+    transition: background .15s;
+}
+.trocas-album-item:hover { background: #f0f4ff; border-color: #c7d2fe; }
+.trocas-album-item-info {
+    display: flex; justify-content: space-between;
+    align-items: center; gap: .5rem; flex-wrap: wrap;
+}
+.trocas-album-item-nome { font-weight: 600; font-size: .88rem; }
+.trocas-album-item-meta { font-size: .75rem; color: #888; }
+.trocas-album-item-barra {
+    height: 4px; background: #e0e0e0; border-radius: 99px; overflow: hidden;
+}
+.trocas-album-item-barra div {
+    height: 100%; background: var(--verde); border-radius: 99px;
+}
+.trocas-lista-vazia { font-size: .85rem; color: #aaa; text-align: center; padding: 1rem; }
 
-    if (!$albumId) responderErro(400, 'album_id obrigatório');
-
-    // Garante que o álbum pertence ao usuário
-    verificarDono($db, $albumId, $usuario['id']);
-
-    if ($modo === 'origem') {
-        // Figurinhas com quantidade > 1 (tem repetida para transferir)
-        $stmt = $db->prepare("
-            SELECT
-                f.id         AS figurinha_id,
-                f.codigo,
-                f.numero,
-                f.tipo,
-                s.sigla      AS selecao_sigla,
-                s.nome       AS selecao_nome,
-                s.bandeira_url,
-                g.codigo     AS grupo_codigo,
-                i.quantidade
-            FROM " . tbl('inventario') . " i
-            JOIN " . tbl('figurinhas') . " f ON f.id = i.figurinha_id
-            JOIN " . tbl('selecoes')   . " s ON s.id = f.selecao_id
-            LEFT JOIN " . tbl('grupos'). " g ON g.id = s.grupo_id
-            WHERE i.album_id  = :aid
-              AND i.usuario_id = :uid
-              AND i.quantidade > 1
-            ORDER BY g.ordem, s.sigla, f.numero
-        ");
-    } else {
-        // Figurinhas com quantidade = 0 no destino (faltando)
-        $stmt = $db->prepare("
-            SELECT
-                f.id         AS figurinha_id,
-                f.codigo,
-                f.numero,
-                f.tipo,
-                s.sigla      AS selecao_sigla,
-                s.nome       AS selecao_nome,
-                s.bandeira_url,
-                g.codigo     AS grupo_codigo,
-                0            AS quantidade
-            FROM " . tbl('figurinhas') . " f
-            JOIN " . tbl('selecoes')   . " s ON s.id = f.selecao_id
-            LEFT JOIN " . tbl('grupos'). " g ON g.id = s.grupo_id
-            LEFT JOIN " . tbl('inventario') . " i
-                ON i.figurinha_id = f.id AND i.album_id = :aid
-            WHERE COALESCE(i.quantidade, 0) = 0
-            ORDER BY g.ordem, s.sigla, f.numero
-        ");
-    }
-
-    if ($modo === 'origem') {
-        $stmt->execute([':aid' => $albumId, ':uid' => $usuario['id']]);
-    } else {
-        $stmt->execute([':aid' => $albumId]);
-    }
-    echo json_encode(['sucesso' => true, 'figurinhas' => $stmt->fetchAll()]);
-    exit;
+/* ── Busca e filtros externos ─────────────────────────────────── */
+.trocas-busca-wrap input {
+    width: 100%; padding: .45rem .65rem;
+    border: 1px solid #ddd; border-radius: 8px;
+    font-size: .88rem; background: #fafafa;
+    box-sizing: border-box;
+}
+.trocas-ordem-filtros {
+    display: flex; gap: .4rem; flex-wrap: wrap;
+}
+.trocas-ordem-btn {
+    padding: .25rem .65rem; border-radius: 20px;
+    border: 1px solid #ddd; background: #f5f5f5;
+    font-size: .8rem; cursor: pointer; font-weight: 600;
+    transition: all .15s;
+}
+.trocas-ordem-btn.ativo {
+    background: #6366f1; color: #fff; border-color: #6366f1;
 }
 
-// ── Transfere figurinhas selecionadas de origem → destino ───────────────────
-function transferir(PDO $db, array $usuario): void
-{
-    $origemId  = $_POST['album_origem_id']  ?? '';
-    $destinoId = $_POST['album_destino_id'] ?? '';
-    $ids       = $_POST['figurinha_ids']    ?? ''; // JSON string: ["uuid1","uuid2"]
+/* ── Lista de colecionadores ──────────────────────────────────── */
+.trocas-lista-coletores {
+    display: flex; flex-direction: column; gap: .4rem;
+    max-height: 280px; overflow-y: auto;
+}
+.coletor-item {
+    display: flex; align-items: center; gap: .65rem;
+    padding: .5rem .65rem; border-radius: 8px;
+    border: 1px solid #eee; background: #fafafa;
+    text-decoration: none; color: var(--texto);
+    transition: background .15s;
+}
+.coletor-item:hover { background: #f0f4ff; border-color: #c7d2fe; }
+.coletor-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    object-fit: cover; flex-shrink: 0; background: #e0e0e0;
+}
+.coletor-info { flex: 1; min-width: 0; }
+.coletor-nome { font-weight: 600; font-size: .88rem; }
+.coletor-meta { font-size: .75rem; color: #888; }
+.coletor-badges { display: flex; gap: .3rem; align-items: center; flex-shrink: 0; }
+.coletor-score {
+    background: #f0fdf4; color: #16a34a;
+    border: 1px solid #bbf7d0; border-radius: 12px;
+    padding: .1rem .45rem; font-size: .72rem; font-weight: 700;
+}
+.coletor-fav-btn {
+    background: none; border: none; font-size: 1.1rem;
+    cursor: pointer; padding: 0; line-height: 1;
+    opacity: .4; transition: opacity .15s;
+}
+.coletor-fav-btn.ativo { opacity: 1; }
+.coletor-fav-btn:hover { opacity: .8; }
 
-    if (!$origemId || !$destinoId || !$ids) {
-        responderErro(400, 'Parâmetros incompletos');
-    }
+@media(max-width:600px) {
+    .trocas-escolha-grid { grid-template-columns: 1fr; }
+}
+</style>
 
-    if ($origemId === $destinoId) {
-        responderErro(400, 'Origem e destino não podem ser o mesmo álbum');
-    }
+<script>
+const ALBUM_ID_PADRAO = <?= json_encode($albumPadrao ? $albumPadrao['id'] : null) ?>;
+let albumAtual  = ALBUM_ID_PADRAO;
+let ordemAtiva  = new Set(['matches']); // critérios ativos
+let buscaTimer  = null;
 
-    $figurinhaIds = json_decode($ids, true);
-    if (!is_array($figurinhaIds) || empty($figurinhaIds)) {
-        responderErro(400, 'Nenhuma figurinha selecionada');
-    }
+// ── Troca álbum e recarrega lista de colecionadores ──────────────────────
+function trocarAlbum() {
+    albumAtual = document.getElementById('select-album').value || ALBUM_ID_PADRAO;
+    carregarColecionadores();
+}
 
-    // Garante que ambos os álbuns pertencem ao usuário
-    verificarDono($db, $origemId,  $usuario['id']);
-    verificarDono($db, $destinoId, $usuario['id']);
-
-    $db->beginTransaction();
-
-    try {
-        $transferidas = 0;
-        $ignoradas    = 0; // destino já tem a figurinha
-
-        foreach ($figurinhaIds as $figId) {
-            $figId = (string) $figId;
-
-            // Busca quantidade atual na origem
-            $stmt = $db->prepare("
-                SELECT id, quantidade FROM " . tbl('inventario') . "
-                WHERE album_id = :aid AND figurinha_id = :fid AND usuario_id = :uid
-            ");
-            $stmt->execute([':aid' => $origemId, ':fid' => $figId, ':uid' => $usuario['id']]);
-            $origem = $stmt->fetch();
-
-            // Pula se não existe ou já ficou sem repetida (corrida entre requests)
-            if (!$origem || (int)$origem['quantidade'] <= 1) {
-                $ignoradas++;
-                continue;
-            }
-
-            // Busca registro no destino
-            $stmt = $db->prepare("
-                SELECT id, quantidade FROM " . tbl('inventario') . "
-                WHERE album_id = :aid AND figurinha_id = :fid
-            ");
-            $stmt->execute([':aid' => $destinoId, ':fid' => $figId]);
-            $destino = $stmt->fetch();
-
-            // Desconta 1 da origem
-            $db->prepare("
-                UPDATE " . tbl('inventario') . "
-                SET quantidade = quantidade - 1
-                WHERE id = :id
-            ")->execute([':id' => $origem['id']]);
-
-            if ($destino) {
-                // Destino já existe: incrementa
-                $db->prepare("
-                    UPDATE " . tbl('inventario') . "
-                    SET quantidade = quantidade + 1
-                    WHERE id = :id
-                ")->execute([':id' => $destino['id']]);
-            } else {
-                // Destino não existe: cria com quantidade 1
-                $db->prepare("
-                    INSERT INTO " . tbl('inventario') . "
-                        (id, album_id, usuario_id, figurinha_id, quantidade, quantidade_bloqueada)
-                    VALUES (UUID(), :aid, :uid, :fid, 1, 0)
-                ")->execute([':aid' => $destinoId, ':uid' => $usuario['id'], ':fid' => $figId]);
-            }
-
-            $transferidas++;
+// ── Toggle de critério de ordenação ──────────────────────────────────────
+function toggleOrdem(btn) {
+    const criterio = btn.dataset.ordem;
+    if (ordemAtiva.has(criterio)) {
+        // Não permite desativar todos
+        if (ordemAtiva.size > 1) {
+            ordemAtiva.delete(criterio);
+            btn.classList.remove('ativo');
         }
-
-        // Recalcula estatísticas dos dois álbuns
-        recalcularAlbum($db, $origemId);
-        recalcularAlbum($db, $destinoId);
-
-        $db->commit();
-
-        echo json_encode([
-            'sucesso'      => true,
-            'transferidas' => $transferidas,
-            'ignoradas'    => $ignoradas,
-        ]);
-
-    } catch (Throwable $e) {
-        $db->rollBack();
-        responderErro(500, 'Erro interno: ' . $e->getMessage());
-    }
-
-    exit;
-}
-
-// ── Minhas repetidas disponíveis para troca ──────────────────────────────────
-// Retorna figurinhas com quantidade > 1 do álbum escolhido,
-// com status_troca e valor_troca para exibição na seção 1
-function minhasRepetidas(PDO $db, array $usuario): void
-{
-    $albumId = $_POST['album_id'] ?? '';
-    if (!$albumId) responderErro(400, 'album_id obrigatório');
-    verificarDono($db, $albumId, $usuario['id']);
-
-    $stmt = $db->prepare("
-        SELECT
-            f.id            AS figurinha_id,
-            f.codigo,
-            f.numero,
-            f.tipo,
-            s.sigla         AS selecao_sigla,
-            s.nome          AS selecao_nome,
-            s.bandeira_url,
-            g.codigo        AS grupo_codigo,
-            i.quantidade,
-            i.status_troca,
-            i.valor_troca,
-            i.quantidade_bloqueada
-        FROM " . tbl('inventario') . " i
-        JOIN " . tbl('figurinhas') . " f ON f.id = i.figurinha_id
-        JOIN " . tbl('selecoes')   . " s ON s.id = f.selecao_id
-        LEFT JOIN " . tbl('grupos'). " g ON g.id = s.grupo_id
-        WHERE i.album_id   = :aid
-          AND i.usuario_id = :uid
-          AND i.quantidade > 1
-        ORDER BY g.ordem, s.sigla, f.numero
-    ");
-    $stmt->execute([':aid' => $albumId, ':uid' => $usuario['id']]);
-
-    echo json_encode(['sucesso' => true, 'figurinhas' => $stmt->fetchAll()]);
-    exit;
-}
-
-// ── Altera status_troca de uma figurinha ─────────────────────────────────────
-// status: livre | troca | venda | bloqueada
-// valor_troca: decimal ou null (só usado quando status = venda)
-function statusFigurinha(PDO $db, array $usuario): void
-{
-    $albumId     = $_POST['album_id']     ?? '';
-    $figurinhaId = $_POST['figurinha_id'] ?? '';
-    $status      = $_POST['status']       ?? '';
-    $valor       = $_POST['valor']        ?? null;
-
-    $statusValidos = ['livre', 'troca', 'venda', 'bloqueada'];
-    if (!$albumId || !$figurinhaId || !in_array($status, $statusValidos)) {
-        responderErro(400, 'Parâmetros inválidos');
-    }
-
-    verificarDono($db, $albumId, $usuario['id']);
-
-    // valor só faz sentido para venda; nos demais, limpa
-    $valorFinal = ($status === 'venda' && is_numeric($valor)) ? (float)$valor : null;
-
-    $stmt = $db->prepare("
-        UPDATE " . tbl('inventario') . "
-        SET status_troca = :status,
-            valor_troca  = :valor
-        WHERE album_id    = :aid
-          AND figurinha_id = :fid
-          AND usuario_id   = :uid
-    ");
-    $stmt->execute([
-        ':status' => $status,
-        ':valor'  => $valorFinal,
-        ':aid'    => $albumId,
-        ':fid'    => $figurinhaId,
-        ':uid'    => $usuario['id'],
-    ]);
-
-    if ($stmt->rowCount() === 0) {
-        responderErro(404, 'Figurinha não encontrada no inventário');
-    }
-
-    echo json_encode(['sucesso' => true, 'status' => $status, 'valor' => $valorFinal]);
-    exit;
-}
-
-// ── Recalcula ifc_matches_troca para o usuário logado ────────────────────────
-// Lógica:
-//   Para cada outro usuário com álbum ativo:
-//     quantidade_match = figurinhas que EU tenho repetidas E o outro não tem
-//                      + figurinhas que o outro tem repetidas E eu não tenho
-//     score_match      = quantidade_match (pode evoluir com distância depois)
-//   Apaga registros antigos do usuário e reinsere os novos
-function matchRecalcular(PDO $db, array $usuario): void
-{
-    $albumId = $_POST['album_id'] ?? '';
-    if (!$albumId) responderErro(400, 'album_id obrigatório');
-    verificarDono($db, $albumId, $usuario['id']);
-
-    // Busca outros usuários que têm pelo menos um álbum ativo com figurinhas
-    $stmt = $db->prepare("
-        SELECT DISTINCT u.id, u.nome,
-            ST_Distance_Sphere(
-                POINT(:lng, :lat),
-                POINT(u.longitude, u.latitude)
-            ) / 1000 AS distancia_km
-        FROM " . tbl('usuarios') . " u
-        JOIN " . tbl('albuns')   . " a ON a.usuario_id = u.id AND a.ativo = 1
-        JOIN " . tbl('inventario'). " i ON i.album_id = a.id
-        WHERE u.id != :uid
-        GROUP BY u.id
-    ");
-    $stmt->execute([
-        ':uid' => $usuario['id'],
-        ':lat' => $usuario['latitude']  ?? 0,
-        ':lng' => $usuario['longitude'] ?? 0,
-    ]);
-    $outrosUsuarios = $stmt->fetchAll();
-
-    if (empty($outrosUsuarios)) {
-        // Limpa matches antigos e encerra
-        $db->prepare("DELETE FROM " . tbl('matches_troca') . " WHERE usuario_origem_id = :uid")
-           ->execute([':uid' => $usuario['id']]);
-        echo json_encode(['sucesso' => true, 'matches' => 0]);
-        exit;
-    }
-
-    // Minhas repetidas (quantidade > 1) no álbum escolhido
-    $stmt = $db->prepare("
-        SELECT figurinha_id FROM " . tbl('inventario') . "
-        WHERE album_id = :aid AND usuario_id = :uid AND quantidade > 1
-    ");
-    $stmt->execute([':aid' => $albumId, ':uid' => $usuario['id']]);
-    $minhasRepetidas = array_column($stmt->fetchAll(), 'figurinha_id');
-
-    // Minhas faltantes (quantidade = 0) no álbum escolhido
-    $stmt = $db->prepare("
-        SELECT f.id FROM " . tbl('figurinhas') . " f
-        LEFT JOIN " . tbl('inventario') . " i
-            ON i.figurinha_id = f.id AND i.album_id = :aid
-        WHERE COALESCE(i.quantidade, 0) = 0
-    ");
-    $stmt->execute([':aid' => $albumId]);
-    $minhasFaltantes = array_column($stmt->fetchAll(), 'id');
-
-    // Apaga matches antigos deste usuário
-    $db->prepare("DELETE FROM " . tbl('matches_troca') . " WHERE usuario_origem_id = :uid")
-       ->execute([':uid' => $usuario['id']]);
-
-    $totalMatches = 0;
-
-    foreach ($outrosUsuarios as $outro) {
-        // Melhor álbum do outro (mais completo)
-        $stmt = $db->prepare("
-            SELECT id FROM " . tbl('albuns') . "
-            WHERE usuario_id = :uid AND ativo = 1
-            ORDER BY percentual_conclusao DESC LIMIT 1
-        ");
-        $stmt->execute([':uid' => $outro['id']]);
-        $albumOutro = $stmt->fetchColumn();
-        if (!$albumOutro) continue;
-
-        // Repetidas do outro
-        $stmt = $db->prepare("
-            SELECT figurinha_id FROM " . tbl('inventario') . "
-            WHERE album_id = :aid AND usuario_id = :uid AND quantidade > 1
-        ");
-        $stmt->execute([':aid' => $albumOutro, ':uid' => $outro['id']]);
-        $repetidrasOutro = array_column($stmt->fetchAll(), 'figurinha_id');
-
-        // Faltantes do outro
-        $stmt = $db->prepare("
-            SELECT f.id FROM " . tbl('figurinhas') . " f
-            LEFT JOIN " . tbl('inventario') . " i
-                ON i.figurinha_id = f.id AND i.album_id = :aid
-            WHERE COALESCE(i.quantidade, 0) = 0
-        ");
-        $stmt->execute([':aid' => $albumOutro]);
-        $faltantesOutro = array_column($stmt->fetchAll(), 'id');
-
-        // Eu tenho repetida que ele precisa
-        $euTenhoEleNao = count(array_intersect($minhasRepetidas, $faltantesOutro));
-
-        // Ele tem repetida que eu preciso
-        $eleTenhoEuNao = count(array_intersect($repetidrasOutro, $minhasFaltantes));
-
-        $qtdMatch = $euTenhoEleNao + $eleTenhoEuNao;
-        if ($qtdMatch === 0) continue;
-
-        // Score simples: quantidade de matches (pode ponderar distância futuramente)
-        $score = $qtdMatch;
-
-        $db->prepare("
-            INSERT INTO " . tbl('matches_troca') . "
-                (id, usuario_origem_id, usuario_destino_id, quantidade_match, distancia_km, score_match)
-            VALUES (UUID(), :orig, :dest, :qtd, :dist, :score)
-        ")->execute([
-            ':orig'  => $usuario['id'],
-            ':dest'  => $outro['id'],
-            ':qtd'   => $qtdMatch,
-            ':dist'  => $outro['distancia_km'] ?? null,
-            ':score' => $score,
-        ]);
-
-        $totalMatches++;
-    }
-
-    echo json_encode(['sucesso' => true, 'matches' => $totalMatches]);
-    exit;
-}
-
-// ── Lista matches calculados com detalhes dos usuários ───────────────────────
-function matchListar(PDO $db, array $usuario): void
-{
-    $albumId = $_POST['album_id'] ?? '';
-    if (!$albumId) responderErro(400, 'album_id obrigatório');
-
-    $stmt = $db->prepare("
-        SELECT
-            m.id              AS match_id,
-            m.quantidade_match,
-            m.distancia_km,
-            m.score_match,
-            u.id              AS usuario_id,
-            u.nome,
-            u.avatar_url,
-            u.cidade,
-            u.estado,
-            u.contato_tipo,
-            u.contato_valor,
-            u.slug_publico
-        FROM " . tbl('matches_troca') . " m
-        JOIN " . tbl('usuarios')      . " u ON u.id = m.usuario_destino_id
-        WHERE m.usuario_origem_id = :uid
-        ORDER BY m.score_match DESC, m.distancia_km ASC
-        LIMIT 50
-    ");
-    $stmt->execute([':uid' => $usuario['id']]);
-    $matches = $stmt->fetchAll();
-
-    // Para cada match, busca quais figurinhas são o "cruzamento"
-    // (eu tenho repetida que ele precisa) para exibir no card
-    $minhasRepetidas = [];
-    if (!empty($matches)) {
-        $stmt = $db->prepare("
-            SELECT figurinha_id, f.codigo
-            FROM " . tbl('inventario') . " i
-            JOIN " . tbl('figurinhas') . " f ON f.id = i.figurinha_id
-            WHERE i.album_id = :aid AND i.usuario_id = :uid AND i.quantidade > 1
-            LIMIT 200
-        ");
-        $stmt->execute([':aid' => $albumId, ':uid' => $usuario['id']]);
-        $minhasRepetidas = array_column($stmt->fetchAll(), 'codigo', 'figurinha_id');
-    }
-
-    foreach ($matches as &$match) {
-        // Álbum principal do outro usuário
-        $stmt = $db->prepare("
-            SELECT id FROM " . tbl('albuns') . "
-            WHERE usuario_id = :uid AND ativo = 1
-            ORDER BY percentual_conclusao DESC LIMIT 1
-        ");
-        $stmt->execute([':uid' => $match['usuario_id']]);
-        $albumOutro = $stmt->fetchColumn();
-
-        $exemplos = [];
-        if ($albumOutro && !empty($minhasRepetidas)) {
-            // Pega até 5 figurinhas que ele precisa e eu tenho de sobra
-            $placeholders = implode(',', array_fill(0, count($minhasRepetidas), '?'));
-            $stmt = $db->prepare("
-                SELECT f.codigo
-                FROM " . tbl('figurinhas') . " f
-                LEFT JOIN " . tbl('inventario') . " i
-                    ON i.figurinha_id = f.id AND i.album_id = ?
-                WHERE f.id IN ($placeholders)
-                  AND COALESCE(i.quantidade, 0) = 0
-                LIMIT 5
-            ");
-            $params = array_merge([$albumOutro], array_keys($minhasRepetidas));
-            $stmt->execute($params);
-            $exemplos = array_column($stmt->fetchAll(), 'codigo');
-        }
-
-        $match['exemplos_oferta'] = $exemplos; // figurinhas que eu ofereço a ele
-    }
-    unset($match);
-
-    echo json_encode(['sucesso' => true, 'matches' => $matches]);
-    exit;
-}
-
-// ── Figurinhas do parceiro: o que ele oferece e o que ele precisa ────────────
-function parceirFigurinhas(PDO $db, array $usuario): void
-{
-    $slugParceiro = $_POST['slug_parceiro'] ?? '';
-    $meuAlbumId   = $_POST['meu_album_id'] ?? '';
-
-    if (!$slugParceiro || !$meuAlbumId) responderErro(400, 'Parâmetros obrigatórios');
-
-    verificarDono($db, $meuAlbumId, $usuario['id']);
-
-    // Busca o parceiro pelo slug
-    $stmt = $db->prepare("
-        SELECT id, nome, avatar_url, cidade, estado, contato_tipo, contato_valor
-        FROM " . tbl('usuarios') . "
-        WHERE slug_publico = :slug
-        LIMIT 1
-    ");
-    $stmt->execute([':slug' => $slugParceiro]);
-    $parceiro = $stmt->fetch();
-    if (!$parceiro) responderErro(404, 'Usuário não encontrado');
-
-    // Melhor álbum do parceiro
-    $stmt = $db->prepare("
-        SELECT id FROM " . tbl('albuns') . "
-        WHERE usuario_id = :uid AND ativo = 1
-        ORDER BY percentual_conclusao DESC LIMIT 1
-    ");
-    $stmt->execute([':uid' => $parceiro['id']]);
-    $albumParceiro = $stmt->fetchColumn();
-    if (!$albumParceiro) {
-        echo json_encode(['sucesso' => true, 'parceiro' => $parceiro, 'oferece' => [], 'precisa' => []]);
-        exit;
-    }
-
-    // ── O QUE ELE OFERECE ────────────────────────────────────────────────────
-    // Repetidas dele (qtd > 1), com status_troca — todas, inclusive bloqueadas
-    $stmt = $db->prepare("
-        SELECT
-            f.id            AS figurinha_id,
-            f.codigo,
-            f.numero,
-            f.tipo,
-            s.sigla         AS selecao_sigla,
-            s.nome          AS selecao_nome,
-            s.bandeira_url,
-            g.codigo        AS grupo_codigo,
-            i.quantidade,
-            i.status_troca,
-            i.valor_troca
-        FROM " . tbl('inventario') . " i
-        JOIN " . tbl('figurinhas') . " f ON f.id = i.figurinha_id
-        JOIN " . tbl('selecoes')   . " s ON s.id = f.selecao_id
-        LEFT JOIN " . tbl('grupos'). " g ON g.id = s.grupo_id
-        WHERE i.album_id   = :aid
-          AND i.usuario_id = :uid
-          AND i.quantidade > 1
-        ORDER BY g.ordem, s.sigla, f.numero
-    ");
-    $stmt->execute([':aid' => $albumParceiro, ':uid' => $parceiro['id']]);
-    $oferece = $stmt->fetchAll();
-
-    // ── O QUE ELE PRECISA (e eu tenho repetida) ──────────────────────────────
-    // Faltantes dele que eu tenho repetidas no meu álbum
-    $stmt = $db->prepare("
-        SELECT
-            f.id            AS figurinha_id,
-            f.codigo,
-            f.numero,
-            f.tipo,
-            s.sigla         AS selecao_sigla,
-            s.nome          AS selecao_nome,
-            s.bandeira_url,
-            g.codigo        AS grupo_codigo,
-            meu.quantidade  AS minha_quantidade,
-            meu.status_troca AS meu_status
-        FROM " . tbl('figurinhas') . " f
-        JOIN " . tbl('selecoes')   . " s  ON s.id = f.selecao_id
-        LEFT JOIN " . tbl('grupos'). " g  ON g.id = s.grupo_id
-        JOIN " . tbl('inventario') . " meu
-            ON meu.figurinha_id = f.id
-           AND meu.album_id     = :meu_aid
-           AND meu.quantidade   > 1
-        LEFT JOIN " . tbl('inventario') . " dele
-            ON dele.figurinha_id = f.id
-           AND dele.album_id     = :aid_parceiro
-        WHERE COALESCE(dele.quantidade, 0) = 0
-        ORDER BY g.ordem, s.sigla, f.numero
-    ");
-    $stmt->execute([':meu_aid' => $meuAlbumId, ':aid_parceiro' => $albumParceiro]);
-    $precisa = $stmt->fetchAll();
-
-    echo json_encode([
-        'sucesso'  => true,
-        'parceiro' => $parceiro,
-        'oferece'  => $oferece,
-        'precisa'  => $precisa,
-    ]);
-    exit;
-}
-
-// ── Favoritar / desfavoritar um colecionador ─────────────────────────────────
-function favoritoToggle(PDO $db, array $usuario): void
-{
-    $favoritoId = $_POST['favorito_id'] ?? '';
-    if (!$favoritoId) responderErro(400, 'favorito_id obrigatório');
-    if ($favoritoId === $usuario['id']) responderErro(400, 'Você não pode favoritar a si mesmo');
-
-    // Verifica se o usuário existe
-    $stmt = $db->prepare("SELECT id FROM " . tbl('usuarios') . " WHERE id = :id");
-    $stmt->execute([':id' => $favoritoId]);
-    if (!$stmt->fetch()) responderErro(404, 'Usuário não encontrado');
-
-    // Verifica se já é favorito
-    $stmt = $db->prepare("
-        SELECT id FROM " . tbl('favoritos') . "
-        WHERE usuario_id = :uid AND favorito_id = :fid
-    ");
-    $stmt->execute([':uid' => $usuario['id'], ':fid' => $favoritoId]);
-    $existe = $stmt->fetch();
-
-    if ($existe) {
-        // Remove favorito
-        $db->prepare("
-            DELETE FROM " . tbl('favoritos') . "
-            WHERE usuario_id = :uid AND favorito_id = :fid
-        ")->execute([':uid' => $usuario['id'], ':fid' => $favoritoId]);
-        echo json_encode(['sucesso' => true, 'favoritado' => false]);
     } else {
-        // Adiciona favorito
-        $db->prepare("
-            INSERT INTO " . tbl('favoritos') . "
-                (id, usuario_id, favorito_id)
-            VALUES (UUID(), :uid, :fid)
-        ")->execute([':uid' => $usuario['id'], ':fid' => $favoritoId]);
-        echo json_encode(['sucesso' => true, 'favoritado' => true]);
+        ordemAtiva.add(criterio);
+        btn.classList.add('ativo');
     }
-    exit;
+    carregarColecionadores();
 }
 
-// ── Lista colecionadores com score, distância e favorito ─────────────────────
-// Parâmetros POST:
-//   album_id  — álbum do usuário logado para calcular matches
-//   busca     — filtro por nome (opcional)
-//   ordem     — combinação de: favoritos, distancia, matches (separados por vírgula)
-//   limite    — quantos retornar (padrão 10, 0 = todos)
-function colecionadoresListar(PDO $db, array $usuario): void
-{
-    $albumId = $_POST['album_id'] ?? '';
-    $busca   = trim($_POST['busca']  ?? '');
-    $ordem   = $_POST['ordem']   ?? 'matches';
-    $limite  = (int)($_POST['limite'] ?? 10);
+// ── Busca com debounce ────────────────────────────────────────────────────
+function buscarColecionadores() {
+    clearTimeout(buscaTimer);
+    buscaTimer = setTimeout(carregarColecionadores, 300);
+}
 
-    if (!$albumId) responderErro(400, 'album_id obrigatório');
+// ── Carrega lista de colecionadores ──────────────────────────────────────
+async function carregarColecionadores() {
+    if (!albumAtual) return;
 
-    // IDs de favoritos do usuário logado
-    $stmt = $db->prepare("
-        SELECT favorito_id FROM " . tbl('favoritos') . "
-        WHERE usuario_id = :uid
-    ");
-    $stmt->execute([':uid' => $usuario['id']]);
-    $favoritosIds = array_column($stmt->fetchAll(), 'favorito_id');
-    $favSet = array_flip($favoritosIds);
+    const busca = document.getElementById('busca-colecionador').value.trim();
+    const lista = document.getElementById('lista-colecionadores');
+    lista.innerHTML = '<div class="trocas-lista-vazia">⏳ Carregando...</div>';
 
-    // Busca todos os outros usuários com match calculado
-    $stmt = $db->prepare("
-        SELECT
-            u.id,
-            u.nome,
-            u.avatar_url,
-            u.cidade,
-            u.estado,
-            u.contato_tipo,
-            u.contato_valor,
-            u.slug_publico,
-            u.latitude,
-            u.longitude,
-            COALESCE(m.quantidade_match, 0) AS quantidade_match,
-            COALESCE(m.score_match, 0)      AS score_match,
-            COALESCE(m.distancia_km, NULL)  AS distancia_km
-        FROM " . tbl('usuarios') . " u
-        LEFT JOIN " . tbl('matches_troca') . " m
-            ON m.usuario_destino_id = u.id
-           AND m.usuario_origem_id  = :uid
-        WHERE u.id != :uid2
-        " . ($busca ? "AND u.nome LIKE :busca" : "") . "
-        ORDER BY u.nome ASC
-    ");
+    const resp = await fetch('/api/trocas', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({
+            acao:     'colecionadores_listar',
+            album_id: albumAtual,
+            busca,
+            ordem:    [...ordemAtiva].join(','),
+            limite:   '10',
+        }),
+    });
+    const data = await resp.json();
 
-    $params = [':uid' => $usuario['id'], ':uid2' => $usuario['id']];
-    if ($busca) $params[':busca'] = '%' . $busca . '%';
-    $stmt->execute($params);
-    $todos = $stmt->fetchAll();
-
-    // Enriquece com flag de favorito
-    foreach ($todos as &$u) {
-        $u['favorito'] = isset($favSet[$u['id']]);
+    if (!data.sucesso || data.colecionadores.length === 0) {
+        lista.innerHTML = '<div class="trocas-lista-vazia">Nenhum colecionador encontrado.</div>';
+        document.getElementById('btn-ver-todos-wrap').style.display = 'none';
+        return;
     }
-    unset($u);
 
-    // Ordena conforme critérios combinados escolhidos pelo usuário
-    $criterios = array_map('trim', explode(',', $ordem));
+    lista.innerHTML = '';
+    for (const c of data.colecionadores) {
+        lista.appendChild(criarItemColetor(c));
+    }
 
-    usort($todos, function($a, $b) use ($criterios) {
-        foreach ($criterios as $criterio) {
-            switch ($criterio) {
-                case 'favoritos':
-                    $cmp = (int)$b['favorito'] <=> (int)$a['favorito'];
-                    if ($cmp !== 0) return $cmp;
-                    break;
+    // Mostra "Ver todos" se há mais
+    document.getElementById('btn-ver-todos-wrap').style.display =
+        data.tem_mais ? 'block' : 'none';
+}
 
-                case 'distancia':
-                    // Sem localização vai para o final
-                    $da = $a['distancia_km'] ?? PHP_FLOAT_MAX;
-                    $db2 = $b['distancia_km'] ?? PHP_FLOAT_MAX;
-                    $cmp = $da <=> $db2;
-                    if ($cmp !== 0) return $cmp;
-                    break;
+// ── Cria item de colecionador ─────────────────────────────────────────────
+function criarItemColetor(c) {
+    const avatar  = c.avatar_url
+        ?? `https://ui-avatars.com/api/?name=${encodeURIComponent(c.nome)}&size=36`;
+    const loc     = [c.cidade, c.estado].filter(Boolean).join(', ');
+    const dist    = c.distancia_km ? `· ${Math.round(c.distancia_km)} km` : '';
+    const matches = c.score_match > 0 ? `${c.score_match} match${c.score_match !== 1 ? 'es' : ''}` : '';
 
-                case 'matches':
-                    $cmp = (int)$b['score_match'] <=> (int)$a['score_match'];
-                    if ($cmp !== 0) return $cmp;
-                    break;
-            }
-        }
-        // Desempate: nome alfabético
-        return strcmp($a['nome'], $b['nome']);
+    const div = document.createElement('div');
+    div.className = 'coletor-item';
+    div.innerHTML = `
+        <img class="coletor-avatar" src="${avatar}" alt="${c.nome}"
+             onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(c.nome)}&size=36'">
+        <div class="coletor-info">
+            <div class="coletor-nome">${c.nome}</div>
+            <div class="coletor-meta">${loc} ${dist}</div>
+        </div>
+        <div class="coletor-badges">
+            ${matches ? `<span class="coletor-score">${matches}</span>` : ''}
+            <button class="coletor-fav-btn ${c.favorito ? 'ativo' : ''}"
+                    data-id="${c.id}"
+                    data-fav="${c.favorito ? '1' : '0'}"
+                    onclick="toggleFavorito(this, event)">⭐</button>
+        </div>`;
+
+    // Clique no item → vai para a página do parceiro
+    div.addEventListener('click', e => {
+        if (e.target.closest('.coletor-fav-btn')) return;
+        window.location.href = `/trocas/parceiro/${c.slug_publico}?album=${albumAtual}`;
     });
 
-    // Se busca começar com o termo → prioriza (começa com > contém)
-    if ($busca) {
-        $prefixo = array_filter($todos, fn($u) =>
-            stripos($u['nome'], $busca) === 0
-        );
-        $contem  = array_filter($todos, fn($u) =>
-            stripos($u['nome'], $busca) !== 0
-        );
-        $todos = array_values(array_merge($prefixo, $contem));
+    return div;
+}
+
+// ── Favoritar / desfavoritar ──────────────────────────────────────────────
+async function toggleFavorito(btn, e) {
+    e.stopPropagation();
+    const favoritoId = btn.dataset.id;
+
+    const resp = await fetch('/api/trocas', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({ acao: 'favorito_toggle', favorito_id: favoritoId }),
+    });
+    const data = await resp.json();
+
+    if (data.sucesso) {
+        btn.dataset.fav = data.favoritado ? '1' : '0';
+        btn.classList.toggle('ativo', data.favoritado);
     }
-
-    $total = count($todos);
-
-    // Aplica limite (0 = todos)
-    if ($limite > 0) {
-        $todos = array_slice($todos, 0, $limite);
-    }
-
-    echo json_encode([
-        'sucesso'       => true,
-        'colecionadores'=> $todos,
-        'total'         => $total,
-        'tem_mais'      => $limite > 0 && $total > $limite,
-    ]);
-    exit;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Inicializa ao carregar ────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    if (albumAtual) carregarColecionadores();
+});
+</script>
 
-function verificarDono(PDO $db, string $albumId, string $usuarioId): void
-{
-    $stmt = $db->prepare("
-        SELECT id FROM " . tbl('albuns') . "
-        WHERE id = :id AND usuario_id = :uid AND ativo = 1
-    ");
-    $stmt->execute([':id' => $albumId, ':uid' => $usuarioId]);
-    if (!$stmt->fetch()) responderErro(403, 'Álbum não encontrado ou sem permissão');
-}
-
-function recalcularAlbum(PDO $db, string $albumId): void
-{
-    $stmt = $db->prepare("SELECT COUNT(*) FROM " . tbl('figurinhas'));
-    $stmt->execute();
-    $total = (int) $stmt->fetchColumn();
-
-    $stmt = $db->prepare("
-        SELECT COUNT(*) FROM " . tbl('inventario') . "
-        WHERE album_id = :aid AND quantidade > 0
-    ");
-    $stmt->execute([':aid' => $albumId]);
-    $tem = (int) $stmt->fetchColumn();
-
-    $stmt = $db->prepare("
-        SELECT COALESCE(SUM(GREATEST(quantidade - 1, 0)), 0)
-        FROM " . tbl('inventario') . " WHERE album_id = :aid
-    ");
-    $stmt->execute([':aid' => $albumId]);
-    $repetidas = (int) $stmt->fetchColumn();
-
-    $pct   = $total > 0 ? round(($tem / $total) * 100, 2) : 0;
-    $faltam = $total - $tem;
-
-    $db->prepare("
-        UPDATE " . tbl('albuns') . "
-        SET percentual_conclusao = :pct,
-            total_faltantes      = :falt,
-            total_repetidas      = :rep
-        WHERE id = :id
-    ")->execute([':pct' => $pct, ':falt' => $faltam, ':rep' => $repetidas, ':id' => $albumId]);
-}
-
-function responderErro(int $codigo, string $msg): never
-{
-    http_response_code($codigo);
-    echo json_encode(['erro' => $msg]);
-    exit;
-}
+<?php layoutFim(); ?>

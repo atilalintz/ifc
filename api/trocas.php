@@ -22,10 +22,13 @@ match ($acao) {
     'transferir'       => transferir($db, $usuario),
     'figurinhas_album' => figurinhasAlbum($db, $usuario),
     'match_recalcular' => matchRecalcular($db, $usuario),
-    'match_listar'     => matchListar($db, $usuario),
-    'status_figurinha' => statusFigurinha($db, $usuario),
-    'minhas_repetidas' => minhasRepetidas($db, $usuario),
-    default            => responderErro(400, 'Ação inválida'),
+    'match_listar'         => matchListar($db, $usuario),
+    'status_figurinha'     => statusFigurinha($db, $usuario),
+    'minhas_repetidas'     => minhasRepetidas($db, $usuario),
+    'parceiro_figurinhas'  => parceirFigurinhas($db, $usuario),
+    'favorito_toggle'      => favoritoToggle($db, $usuario),
+    'colecionadores_listar'=> colecionadoresListar($db, $usuario),
+    default                => responderErro(400, 'Ação inválida'),
 };
 
 // ── Retorna figurinhas de um álbum para popular o grid ───────────────────────
@@ -479,6 +482,261 @@ function matchListar(PDO $db, array $usuario): void
     unset($match);
 
     echo json_encode(['sucesso' => true, 'matches' => $matches]);
+    exit;
+}
+
+// ── Figurinhas do parceiro: o que ele oferece e o que ele precisa ────────────
+function parceirFigurinhas(PDO $db, array $usuario): void
+{
+    $slugParceiro = $_POST['slug_parceiro'] ?? '';
+    $meuAlbumId   = $_POST['meu_album_id'] ?? '';
+
+    if (!$slugParceiro || !$meuAlbumId) responderErro(400, 'Parâmetros obrigatórios');
+
+    verificarDono($db, $meuAlbumId, $usuario['id']);
+
+    // Busca o parceiro pelo slug
+    $stmt = $db->prepare("
+        SELECT id, nome, avatar_url, cidade, estado, contato_tipo, contato_valor
+        FROM " . tbl('usuarios') . "
+        WHERE slug_publico = :slug
+        LIMIT 1
+    ");
+    $stmt->execute([':slug' => $slugParceiro]);
+    $parceiro = $stmt->fetch();
+    if (!$parceiro) responderErro(404, 'Usuário não encontrado');
+
+    // Melhor álbum do parceiro
+    $stmt = $db->prepare("
+        SELECT id FROM " . tbl('albuns') . "
+        WHERE usuario_id = :uid AND ativo = 1
+        ORDER BY percentual_conclusao DESC LIMIT 1
+    ");
+    $stmt->execute([':uid' => $parceiro['id']]);
+    $albumParceiro = $stmt->fetchColumn();
+    if (!$albumParceiro) {
+        echo json_encode(['sucesso' => true, 'parceiro' => $parceiro, 'oferece' => [], 'precisa' => []]);
+        exit;
+    }
+
+    // ── O QUE ELE OFERECE ────────────────────────────────────────────────────
+    // Repetidas dele (qtd > 1), com status_troca — todas, inclusive bloqueadas
+    $stmt = $db->prepare("
+        SELECT
+            f.id            AS figurinha_id,
+            f.codigo,
+            f.numero,
+            f.tipo,
+            s.sigla         AS selecao_sigla,
+            s.nome          AS selecao_nome,
+            s.bandeira_url,
+            g.codigo        AS grupo_codigo,
+            i.quantidade,
+            i.status_troca,
+            i.valor_troca
+        FROM " . tbl('inventario') . " i
+        JOIN " . tbl('figurinhas') . " f ON f.id = i.figurinha_id
+        JOIN " . tbl('selecoes')   . " s ON s.id = f.selecao_id
+        LEFT JOIN " . tbl('grupos'). " g ON g.id = s.grupo_id
+        WHERE i.album_id   = :aid
+          AND i.usuario_id = :uid
+          AND i.quantidade > 1
+        ORDER BY g.ordem, s.sigla, f.numero
+    ");
+    $stmt->execute([':aid' => $albumParceiro, ':uid' => $parceiro['id']]);
+    $oferece = $stmt->fetchAll();
+
+    // ── O QUE ELE PRECISA (e eu tenho repetida) ──────────────────────────────
+    // Faltantes dele que eu tenho repetidas no meu álbum
+    $stmt = $db->prepare("
+        SELECT
+            f.id            AS figurinha_id,
+            f.codigo,
+            f.numero,
+            f.tipo,
+            s.sigla         AS selecao_sigla,
+            s.nome          AS selecao_nome,
+            s.bandeira_url,
+            g.codigo        AS grupo_codigo,
+            meu.quantidade  AS minha_quantidade,
+            meu.status_troca AS meu_status
+        FROM " . tbl('figurinhas') . " f
+        JOIN " . tbl('selecoes')   . " s  ON s.id = f.selecao_id
+        LEFT JOIN " . tbl('grupos'). " g  ON g.id = s.grupo_id
+        JOIN " . tbl('inventario') . " meu
+            ON meu.figurinha_id = f.id
+           AND meu.album_id     = :meu_aid
+           AND meu.quantidade   > 1
+        LEFT JOIN " . tbl('inventario') . " dele
+            ON dele.figurinha_id = f.id
+           AND dele.album_id     = :aid_parceiro
+        WHERE COALESCE(dele.quantidade, 0) = 0
+        ORDER BY g.ordem, s.sigla, f.numero
+    ");
+    $stmt->execute([':meu_aid' => $meuAlbumId, ':aid_parceiro' => $albumParceiro]);
+    $precisa = $stmt->fetchAll();
+
+    echo json_encode([
+        'sucesso'  => true,
+        'parceiro' => $parceiro,
+        'oferece'  => $oferece,
+        'precisa'  => $precisa,
+    ]);
+    exit;
+}
+
+// ── Favoritar / desfavoritar um colecionador ─────────────────────────────────
+function favoritoToggle(PDO $db, array $usuario): void
+{
+    $favoritoId = $_POST['favorito_id'] ?? '';
+    if (!$favoritoId) responderErro(400, 'favorito_id obrigatório');
+    if ($favoritoId === $usuario['id']) responderErro(400, 'Você não pode favoritar a si mesmo');
+
+    // Verifica se o usuário existe
+    $stmt = $db->prepare("SELECT id FROM " . tbl('usuarios') . " WHERE id = :id");
+    $stmt->execute([':id' => $favoritoId]);
+    if (!$stmt->fetch()) responderErro(404, 'Usuário não encontrado');
+
+    // Verifica se já é favorito
+    $stmt = $db->prepare("
+        SELECT id FROM " . tbl('favoritos') . "
+        WHERE usuario_id = :uid AND favorito_id = :fid
+    ");
+    $stmt->execute([':uid' => $usuario['id'], ':fid' => $favoritoId]);
+    $existe = $stmt->fetch();
+
+    if ($existe) {
+        // Remove favorito
+        $db->prepare("
+            DELETE FROM " . tbl('favoritos') . "
+            WHERE usuario_id = :uid AND favorito_id = :fid
+        ")->execute([':uid' => $usuario['id'], ':fid' => $favoritoId]);
+        echo json_encode(['sucesso' => true, 'favoritado' => false]);
+    } else {
+        // Adiciona favorito
+        $db->prepare("
+            INSERT INTO " . tbl('favoritos') . "
+                (id, usuario_id, favorito_id)
+            VALUES (UUID(), :uid, :fid)
+        ")->execute([':uid' => $usuario['id'], ':fid' => $favoritoId]);
+        echo json_encode(['sucesso' => true, 'favoritado' => true]);
+    }
+    exit;
+}
+
+// ── Lista colecionadores com score, distância e favorito ─────────────────────
+// Parâmetros POST:
+//   album_id  — álbum do usuário logado para calcular matches
+//   busca     — filtro por nome (opcional)
+//   ordem     — combinação de: favoritos, distancia, matches (separados por vírgula)
+//   limite    — quantos retornar (padrão 10, 0 = todos)
+function colecionadoresListar(PDO $db, array $usuario): void
+{
+    $albumId = $_POST['album_id'] ?? '';
+    $busca   = trim($_POST['busca']  ?? '');
+    $ordem   = $_POST['ordem']   ?? 'matches';
+    $limite  = (int)($_POST['limite'] ?? 10);
+
+    if (!$albumId) responderErro(400, 'album_id obrigatório');
+
+    // IDs de favoritos do usuário logado
+    $stmt = $db->prepare("
+        SELECT favorito_id FROM " . tbl('favoritos') . "
+        WHERE usuario_id = :uid
+    ");
+    $stmt->execute([':uid' => $usuario['id']]);
+    $favoritosIds = array_column($stmt->fetchAll(), 'favorito_id');
+    $favSet = array_flip($favoritosIds);
+
+    // Busca todos os outros usuários com match calculado
+    $stmt = $db->prepare("
+        SELECT
+            u.id,
+            u.nome,
+            u.avatar_url,
+            u.cidade,
+            u.estado,
+            u.contato_tipo,
+            u.contato_valor,
+            u.slug_publico,
+            u.latitude,
+            u.longitude,
+            COALESCE(m.quantidade_match, 0) AS quantidade_match,
+            COALESCE(m.score_match, 0)      AS score_match,
+            COALESCE(m.distancia_km, NULL)  AS distancia_km
+        FROM " . tbl('usuarios') . " u
+        LEFT JOIN " . tbl('matches_troca') . " m
+            ON m.usuario_destino_id = u.id
+           AND m.usuario_origem_id  = :uid
+        WHERE u.id != :uid2
+        " . ($busca ? "AND u.nome LIKE :busca" : "") . "
+        ORDER BY u.nome ASC
+    ");
+
+    $params = [':uid' => $usuario['id'], ':uid2' => $usuario['id']];
+    if ($busca) $params[':busca'] = '%' . $busca . '%';
+    $stmt->execute($params);
+    $todos = $stmt->fetchAll();
+
+    // Enriquece com flag de favorito
+    foreach ($todos as &$u) {
+        $u['favorito'] = isset($favSet[$u['id']]);
+    }
+    unset($u);
+
+    // Ordena conforme critérios combinados escolhidos pelo usuário
+    $criterios = array_map('trim', explode(',', $ordem));
+
+    usort($todos, function($a, $b) use ($criterios) {
+        foreach ($criterios as $criterio) {
+            switch ($criterio) {
+                case 'favoritos':
+                    $cmp = (int)$b['favorito'] <=> (int)$a['favorito'];
+                    if ($cmp !== 0) return $cmp;
+                    break;
+
+                case 'distancia':
+                    // Sem localização vai para o final
+                    $da = $a['distancia_km'] ?? PHP_FLOAT_MAX;
+                    $db2 = $b['distancia_km'] ?? PHP_FLOAT_MAX;
+                    $cmp = $da <=> $db2;
+                    if ($cmp !== 0) return $cmp;
+                    break;
+
+                case 'matches':
+                    $cmp = (int)$b['score_match'] <=> (int)$a['score_match'];
+                    if ($cmp !== 0) return $cmp;
+                    break;
+            }
+        }
+        // Desempate: nome alfabético
+        return strcmp($a['nome'], $b['nome']);
+    });
+
+    // Se busca começar com o termo → prioriza (começa com > contém)
+    if ($busca) {
+        $prefixo = array_filter($todos, fn($u) =>
+            stripos($u['nome'], $busca) === 0
+        );
+        $contem  = array_filter($todos, fn($u) =>
+            stripos($u['nome'], $busca) !== 0
+        );
+        $todos = array_values(array_merge($prefixo, $contem));
+    }
+
+    $total = count($todos);
+
+    // Aplica limite (0 = todos)
+    if ($limite > 0) {
+        $todos = array_slice($todos, 0, $limite);
+    }
+
+    echo json_encode([
+        'sucesso'       => true,
+        'colecionadores'=> $todos,
+        'total'         => $total,
+        'tem_mais'      => $limite > 0 && $total > $limite,
+    ]);
     exit;
 }
 

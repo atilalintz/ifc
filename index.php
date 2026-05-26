@@ -24,27 +24,28 @@ $apis = [
 
 // ── Páginas ───────────────────────────────────────────────────────────────────
 $paginas = [
-    'albuns'        => 'pages/albuns.php',
-    'inventario'    => 'pages/inventario.php',
-    'trocas'        => 'pages/trocas.php',
-    'scanner'       => 'pages/scanner.php',
-    'perfil'        => 'pages/perfil.php',
-    'parceiro'      => 'pages/parceiro.php',
-    'auth/login'    => 'auth/login.php',
-    'auth/registro' => 'auth/registro.php',
-    'auth/callback' => 'auth/callback.php',
-    'auth/logout'   => 'auth/logout.php',
+    'albuns'           => 'pages/albuns.php',
+    'inventario'       => 'pages/inventario.php',
+    'trocas'           => 'pages/trocas.php',
+    'trocas/internas'  => 'pages/trocas_internas.php',
+    'trocas/externas'  => 'pages/trocas_externas.php',
+    'scanner'          => 'pages/scanner.php',
+    'perfil'           => 'pages/perfil.php',
+    'auth/login'       => 'auth/login.php',
+    'auth/registro'    => 'auth/registro.php',
+    'auth/callback'    => 'auth/callback.php',
+    'auth/logout'      => 'auth/logout.php',
 ];
 
 $rotasPublicas = ['auth/login', 'auth/callback', 'auth/logout', 'auth/registro'];
 
-// ── Rotas públicas (sem login) ────────────────────────────────────────────────
+// ── Rotas públicas ────────────────────────────────────────────────────────────
 if (in_array($rotaCompleta, $rotasPublicas, true)) {
     require_once __DIR__ . '/' . $paginas[$rotaCompleta];
     exit;
 }
 
-// api/auth também é pública (recebe POST do form de login/registro)
+// api/auth é pública (recebe POST do form de login/registro)
 if ($route === 'api/auth') {
     require_once __DIR__ . '/api/auth.php';
     exit;
@@ -61,8 +62,13 @@ if (isset($apis[$route])) {
 
 // ── inventario/{uuid} ─────────────────────────────────────────────────────────
 if ($rotaBase === 'inventario' && !empty($segmentos[1])) {
-    $_GET['id'] = $segmentos[1];
     require_once __DIR__ . '/pages/inventario.php';
+    exit;
+}
+
+// ── trocas/parceiro/{slug} ────────────────────────────────────────────────────
+if ($rotaBase === 'trocas' && ($segmentos[1] ?? '') === 'parceiro' && !empty($segmentos[2])) {
+    require_once __DIR__ . '/pages/parceiro.php';
     exit;
 }
 

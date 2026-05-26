@@ -4,8 +4,11 @@ require_once __DIR__ . '/../config/oauth.php';
 require_once __DIR__ . '/../config/session.php';
 
 function layoutInicio(string $titulo): void {
-    $usuario = usuarioLogado();
-    $appPath = defined('APP_PATH') ? APP_PATH : '';
+    $usuario  = usuarioLogado();
+    $appPath  = defined('APP_PATH') ? APP_PATH : '';
+    $rota     = trim($_GET['route'] ?? '', '/');
+    $rotaBase = explode('/', $rota)[0] ?? '';
+    $emTrocas = str_starts_with($rota, 'trocas');
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -20,9 +23,9 @@ function layoutInicio(string $titulo): void {
         <div class="container">
             <a href="<?= $appPath ?>/albuns" class="logo">⚽ IFC</a>
             <nav>
-                <a href="<?= $appPath ?>/albuns">Álbuns</a>
-                <a href="<?= $appPath ?>/trocas">Trocas</a>
-                <a href="<?= $appPath ?>/scanner">Scanner</a>
+                <a href="<?= $appPath ?>/albuns"  <?= $rotaBase==='albuns'  ? 'class="nav-ativa"' : '' ?>>Álbuns</a>
+                <a href="<?= $appPath ?>/trocas"  <?= $emTrocas              ? 'class="nav-ativa"' : '' ?>>Trocas</a>
+                <a href="<?= $appPath ?>/scanner" <?= $rotaBase==='scanner' ? 'class="nav-ativa"' : '' ?>>Scanner</a>
             </nav>
             <div class="header-usuario">
                 <?php if ($usuario): ?>
@@ -44,6 +47,24 @@ function layoutInicio(string $titulo): void {
                 <?php endif; ?>
             </div>
         </div>
+        <?php if ($emTrocas): ?>
+        <div class="trocas-subnav">
+            <div class="container">
+                <a href="<?= $appPath ?>/trocas"
+                   class="subnav-link <?= $rota==='trocas' ? 'ativa' : '' ?>">
+                    Visão Geral
+                </a>
+                <a href="<?= $appPath ?>/trocas/internas"
+                   class="subnav-link <?= str_starts_with($rota,'trocas/internas') ? 'ativa' : '' ?>">
+                    ↔️ Internas
+                </a>
+                <a href="<?= $appPath ?>/trocas/externas"
+                   class="subnav-link <?= str_starts_with($rota,'trocas/externas')||str_starts_with($rota,'trocas/parceiro') ? 'ativa' : '' ?>">
+                    🤝 Externas
+                </a>
+            </div>
+        </div>
+        <?php endif; ?>
     </header>
     <main class="container">
 <?php }
