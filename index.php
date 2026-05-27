@@ -30,6 +30,7 @@ $paginas = [
     'trocas/internas'  => 'pages/trocas_internas.php',
     'trocas/externas'  => 'pages/trocas_externas.php',
     'scanner'          => 'pages/scanner.php',
+    'scanner/voz'      => 'pages/scanner_voz.php',
     'perfil'           => 'pages/perfil.php',
     'auth/login'       => 'auth/login.php',
     'auth/registro'    => 'auth/registro.php',

@@ -8,7 +8,8 @@ function layoutInicio(string $titulo): void {
     $appPath  = defined('APP_PATH') ? APP_PATH : '';
     $rota     = trim($_GET['route'] ?? '', '/');
     $rotaBase = explode('/', $rota)[0] ?? '';
-    $emTrocas = str_starts_with($rota, 'trocas');
+    $emTrocas  = str_starts_with($rota, 'trocas');
+    $emScanner = str_starts_with($rota, 'scanner');
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -25,7 +26,7 @@ function layoutInicio(string $titulo): void {
             <nav>
                 <a href="<?= $appPath ?>/albuns"  <?= $rotaBase==='albuns'  ? 'class="nav-ativa"' : '' ?>>Álbuns</a>
                 <a href="<?= $appPath ?>/trocas"  <?= $emTrocas              ? 'class="nav-ativa"' : '' ?>>Trocas</a>
-                <a href="<?= $appPath ?>/scanner" <?= $rotaBase==='scanner' ? 'class="nav-ativa"' : '' ?>>Scanner</a>
+                <a href="<?= $appPath ?>/scanner" <?= $emScanner             ? 'class="nav-ativa"' : '' ?>>Scanner</a>
             </nav>
             <div class="header-usuario">
                 <?php if ($usuario): ?>
@@ -61,6 +62,20 @@ function layoutInicio(string $titulo): void {
                 <a href="<?= $appPath ?>/trocas/externas"
                    class="subnav-link <?= str_starts_with($rota,'trocas/externas')||str_starts_with($rota,'trocas/parceiro') ? 'ativa' : '' ?>">
                     🤝 Externas
+                </a>
+            </div>
+        </div>
+        <?php endif; ?>
+        <?php if ($emScanner): ?>
+        <div class="trocas-subnav">
+            <div class="container">
+                <a href="<?= $appPath ?>/scanner"
+                   class="subnav-link <?= $rota==='scanner' || str_starts_with($rota,'scanner/camera') ? 'ativa' : '' ?>">
+                    📷 Câmera
+                </a>
+                <a href="<?= $appPath ?>/scanner/voz"
+                   class="subnav-link <?= str_starts_with($rota,'scanner/voz') ? 'ativa' : '' ?>">
+                    🎙️ Voz
                 </a>
             </div>
         </div>

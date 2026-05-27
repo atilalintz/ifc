@@ -337,7 +337,7 @@
             "ARÁBIA SAUDITA": "KSA", "URUGUAI": "URU", "FRANÇA": "FRA", "SENEGAL": "SEN", "IRAQUE": "IRQ",
             "NORUEGA": "NOR", "ARGENTINA": "ARG", "ARGÉLIA": "ALG", "ÁUSTRIA": "AUT", "JORDANIA": "JOR",
             "PORTUGAL": "POR", "CONGO": "COD", "UZBEQUISTÃO": "UZB", "COLÔMBIA": "COL", "INGLATERRA": "ENG",
-            "CROACIA": "CRO", "GANA": "GHA", "PANAMÁ": "PAN", "COCA": "CC"
+            "CROACIA": "CRO", "GANA": "GHA", "PANAMÁ": "PAN", "COCA-COLA": "CC"
         };
 
         const mapaGrupos = {
@@ -499,7 +499,8 @@
                     .replace(/\bCAR\b/g, "K")      // Se entendeu "CAR", vira "K"
                     .replace(/\bCARRO\b/g, "K")    // Se entendeu "CARRO", vira "K"
                     .replace(/\bGRUPO E\b/g, "GRUPO E") // Mantém o E padrão
-                    .replace(/\bGRUPO I\b/g, "GRUPO I");
+                    .replace(/\bGRUPO I\b/g, "GRUPO I")
+                    .replace(/\bGRUPO COCA COLA\b/g, "GRUPO COCA-COLA");
 
                 // Se o som de "I" virar "E" ou vice-versa, tratamos no match aceitando ambas as variações
                 const matchGrupo = textoCorrigido.match(/(?:EXCLUIR|APAGAR)\s+GRUPO\s+([A-L])/);
@@ -563,10 +564,8 @@
                 }
 
                 if (siglaAlvo) {
-                    // Caso tenha número ou o termo "ZERO" -> Remove item único
-                    if (numeroItem !== null || texto.includes("ZERO")) {
-                        if (texto.includes("ZERO") || numeroItem === 0) numeroItem = 0;
-                        
+                    // Caso tenha número -> Remove item único (A checagem de "ZERO" por extenso foi removida)
+                    if (numeroItem !== null) {
                         let numeroFormatado = String(numeroItem).padStart(2, '0');
                         let codigoAlvo = siglaAlvo + numeroFormatado;
 
@@ -651,6 +650,7 @@
                 
                 // Dicionário de sinônimos fonéticos para os grupos problemáticos
                 let textoCorrigido = texto
+                    .replace(/\bcoca-cola\b/g, "CC")
                     .replace(/\bCÁ\b/g, "K")
                     .replace(/\bCAR\b/g, "K")
                     .replace(/\bCARRO\b/g, "K")
