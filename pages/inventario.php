@@ -618,8 +618,16 @@ async function atualizarTodas(acao) {
 
     if (!confirm(msg)) return;
 
-    for (const card of alvo) {
-        await atualizar(card.id.replace('fig-', ''), ALBUM_ID, acao);
+    mostrarLoading(`Processando figurinhas...`, true);
+
+    try {
+        for (let i = 0; i < alvo.length; i++) {
+            if (loadingFoiCancelado()) break;
+            atualizarProgresso(i + 1, alvo.length);
+            await atualizar(alvo[i].id.replace('fig-', ''), ALBUM_ID, acao);
+        }
+    } finally {
+        esconderLoading();
     }
 }
 
@@ -726,31 +734,34 @@ async function aplicarStatusMassa() {
     if (!confirm(`Aplicar status "${statusMassaSelecionado}" em ${cards.length} figurinha(s)?`)) return;
 
     const btn = document.getElementById('btn-aplicar-status');
-    btn.disabled    = true;
-    btn.textContent = '⏳ Aplicando...';
+    btn.disabled = true; btn.textContent = '⏳ Aplicando...';
+    mostrarLoading(`Aplicando status...`, true);
 
-    for (const card of cards) {
-        const figId = card.id.replace('fig-', '');
-        const resp  = await fetch('/api/trocas', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: new URLSearchParams({
-                acao: 'status_figurinha', album_id: ALBUM_ID,
-                figurinha_id: figId, status: statusMassaSelecionado, valor,
-            }),
-        });
-        const data = await resp.json();
-        if (data.sucesso) {
-            const badge = document.getElementById(`badge-${figId}`);
-            card.dataset.status = data.status;
-            atualizarBadge(figId, data.status);
+    try {
+        for (let i = 0; i < cards.length; i++) {
+            if (loadingFoiCancelado()) break;
+            atualizarProgresso(i + 1, cards.length);
+            const figId = cards[i].id.replace('fig-', '');
+            const resp  = await fetch('/api/trocas', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: new URLSearchParams({
+                    acao: 'status_figurinha', album_id: ALBUM_ID,
+                    figurinha_id: figId, status: statusMassaSelecionado, valor,
+                }),
+            });
+            const data = await resp.json();
+            if (data.sucesso) {
+                cards[i].dataset.status = data.status;
+                atualizarBadge(figId, data.status);
+            }
         }
+    } finally {
+        esconderLoading();
+        btn.disabled = false; btn.textContent = '✓ Aplicar status';
+        document.getElementById('painel-massa').style.display = 'none';
+        aplicarFiltros();
     }
-
-    btn.disabled    = false;
-    btn.textContent = '✓ Aplicar status';
-    document.getElementById('painel-massa').style.display = 'none';
-    aplicarFiltros();
 }
 
 async function aplicarQtdMassa(acao) {
@@ -775,11 +786,18 @@ async function aplicarQtdMassa(acao) {
     if (!confirm(msgs[acao])) return;
 
     document.getElementById('painel-massa').style.display = 'none';
+    mostrarLoading(`Processando figurinhas...`, true);
 
-    for (const card of alvo) {
-        const figId  = card.id.replace('fig-', '');
-        const acaoApi = acao === 'zerar' ? 'zerar' : acao;
-        await atualizar(figId, ALBUM_ID, acaoApi);
+    try {
+        for (let i = 0; i < alvo.length; i++) {
+            if (loadingFoiCancelado()) break;
+            atualizarProgresso(i + 1, alvo.length);
+            const figId   = alvo[i].id.replace('fig-', '');
+            const acaoApi = acao === 'zerar' ? 'zerar' : acao;
+            await atualizar(figId, ALBUM_ID, acaoApi);
+        }
+    } finally {
+        esconderLoading();
     }
 }
 

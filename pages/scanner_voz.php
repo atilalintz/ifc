@@ -308,12 +308,17 @@ function processarTextoDito(textoBruto) {
         if (matchG && mapaGrupos[matchG[1]]) {
             const letra = matchG[1];
             logConsole(`📦 Inserindo Grupo ${letra}...`);
-            mapaGrupos[letra].forEach(sigla => {
-                const lim = obterLimite(sigla);
-                const nome = encontrarNomePorSigla(sigla);
-                for (let n = 1; n <= lim; n++) adicionarItem(sigla + String(n).padStart(2,'0'), nome, 1);
-            });
-            emitirSom(true); return;
+            mostrarLoading(`Processando Grupo ${letra}...`);
+            setTimeout(() => {
+                mapaGrupos[letra].forEach(sigla => {
+                    const lim = obterLimite(sigla);
+                    const nome = encontrarNomePorSigla(sigla);
+                    for (let n = 1; n <= lim; n++) adicionarItem(sigla + String(n).padStart(2,'0'), nome, 1);
+                });
+                esconderLoading();
+                emitirSom(true);
+            }, 50);
+            return;
         }
     }
 
@@ -324,8 +329,13 @@ function processarTextoDito(textoBruto) {
             if (textoSem.includes(chave) || (chave.includes(textoSem) && textoSem.length > 2)) {
                 const lim = obterLimite(sigla);
                 logConsole(`📦 Lote: ${chave} (01 a ${lim})`);
-                for (let n = 1; n <= lim; n++) adicionarItem(sigla + String(n).padStart(2,'0'), chave, 1);
-                emitirSom(true); return;
+                mostrarLoading(`Processando ${chave}...`);
+                setTimeout(() => {
+                    for (let n = 1; n <= lim; n++) adicionarItem(sigla + String(n).padStart(2,'0'), chave, 1);
+                    esconderLoading();
+                    emitirSom(true);
+                }, 50);
+                return;
             }
         }
     }
@@ -442,9 +452,9 @@ async function confirmarLote() {
     if (!itens.length) { alert('Fila vazia!'); return; }
 
     const albumId = document.getElementById('voz-album').value;
-
-    // Converte para o formato que api/scanner.php espera
     const itensSalvar = itens.map(i => ({ codigo: i.codigo, nome: i.selecao, qtd: i.quantidade }));
+
+    mostrarLoading(`Salvando ${itens.length} figurinhas...`, false);
 
     try {
         const resp = await fetch('/api/scanner', {
@@ -472,6 +482,8 @@ async function confirmarLote() {
         }
     } catch (err) {
         alert('Erro de conexão.');
+    } finally {
+        esconderLoading();
     }
 }
 

@@ -82,6 +82,28 @@ function layoutInicio(string $titulo): void {
         <?php endif; ?>
     </header>
     <main class="container">
+<!-- Overlay de loading global -->
+<div id="loading-overlay" style="display:none">
+    <div class="loading-box">
+        <div class="loading-spinner">⟳</div>
+        <p id="loading-msg">Processando...</p>
+        <div id="loading-progresso" style="display:none">
+            <div class="loading-barra-wrap">
+                <div class="loading-barra-fill" id="loading-barra-fill"></div>
+            </div>
+            <small id="loading-contador" style="color:#555;font-weight:600"></small>
+        </div>
+        <small class="loading-aviso">Não feche nem recarregue a página</small>
+        <button id="loading-btn-cancelar" style="display:none"
+                onclick="cancelarProcessamento()"
+                class="loading-btn-cancel">
+            ✕ Cancelar processo
+        </button>
+        <small id="loading-aviso-cancel" style="display:none;color:#dc2626;font-size:.75rem">
+            ⚠️ Cancelar pode deixar dados incompletos
+        </small>
+    </div>
+</div>
 <?php }
 
 function layoutFim(): void { ?>
@@ -89,6 +111,45 @@ function layoutFim(): void { ?>
     <footer class="footer">
         <div class="container">IFC — Inventário de Figurinhas da Copa 2026</div>
     </footer>
+    <script>
+    // ── Loading overlay global ────────────────────────────────────────────
+    let _loadingCancelado = false;
+
+    function mostrarLoading(msg = 'Processando...', comCancelar = false) {
+        _loadingCancelado = false;
+        document.getElementById('loading-msg').textContent   = msg;
+        document.getElementById('loading-overlay').style.display = 'flex';
+        document.getElementById('loading-progresso').style.display = 'none';
+        document.getElementById('loading-barra-fill').style.width  = '0%';
+        document.getElementById('loading-btn-cancelar').style.display    = comCancelar ? '' : 'none';
+        document.getElementById('loading-aviso-cancel').style.display    = comCancelar ? '' : 'none';
+        // Bloqueia cliques fora do overlay
+        document.getElementById('loading-overlay').style.pointerEvents = 'all';
+    }
+
+    function atualizarProgresso(atual, total, msg = null) {
+        const pct = total > 0 ? Math.round((atual / total) * 100) : 0;
+        document.getElementById('loading-progresso').style.display   = '';
+        document.getElementById('loading-barra-fill').style.width    = pct + '%';
+        document.getElementById('loading-contador').textContent      = `${atual} / ${total} (${pct}%)`;
+        if (msg) document.getElementById('loading-msg').textContent  = msg;
+    }
+
+    function esconderLoading() {
+        document.getElementById('loading-overlay').style.display = 'none';
+        _loadingCancelado = false;
+    }
+
+    function cancelarProcessamento() {
+        if (!confirm('Cancelar o processamento?\n\n⚠️ Os itens já processados serão mantidos, mas os restantes não serão atualizados.')) return;
+        _loadingCancelado = true;
+        esconderLoading();
+    }
+
+    function loadingFoiCancelado() {
+        return _loadingCancelado;
+    }
+    </script>
 </body>
 </html>
 <?php }
