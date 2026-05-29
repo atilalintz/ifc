@@ -251,7 +251,7 @@ function renderizarGrid(gridId, vazioId, figurinhas, tipo) {
             const mini = document.createElement('div');
             mini.className = 'selecao-mini';
             mini.innerHTML = `
-                <img src="${sel.bandeira}" alt="${sigla}" onerror="this.style.display='none'">
+    		<img src="${sel.bandeira}" alt="${sigla}" loading="lazy" onerror="this.style.display='none'">
                 <span class="selecao-sigla-badge">${sigla}</span>
                 <span>${sel.nome}</span>`;
             divS.appendChild(mini);

@@ -226,9 +226,10 @@ layoutInicio('Inventário — ' . $album['nome']);
             <div class="selecao-cabecalho" onclick="toggleSelecao(this)">
                 <div class="selecao-info">
                     <img src="<?= htmlspecialchars($selecao['bandeira']) ?>"
-                         alt="<?= htmlspecialchars($sigla) ?>"
-                         class="bandeira"
-                         onerror="this.style.display='none'">
+		     alt="<?= htmlspecialchars($sigla) ?>"
+		     class="bandeira"
+		     loading="lazy"
+		     onerror="this.style.display='none'">
                     <span class="selecao-sigla-badge"><?= htmlspecialchars($sigla) ?></span>
                     <span class="selecao-nome"><?= htmlspecialchars($selecao['nome']) ?></span>
                     <span class="selecao-grupo-badge">
@@ -550,30 +551,73 @@ document.getElementById('filtro-troca').addEventListener('change', aplicarFiltro
 
 // ── API inventário ────────────────────────────────────────────────────────────
 async function atualizar(figurinhaId, albumId, acao) {
-    const resp = await fetch('/api/inventario', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `figurinha_id=${figurinhaId}&album_id=${albumId}&acao=${acao}`
-    });
-    const data = await resp.json();
-
     const card  = document.getElementById(`fig-${figurinhaId}`);
     const badge = document.getElementById(`badge-${figurinhaId}`);
 
-    card.dataset.qtd = data.quantidade;
-    document.getElementById(`qtd-${figurinhaId}`).textContent = data.quantidade;
-    card.classList.toggle('tem',      data.quantidade > 0);
-    card.classList.toggle('repetida', data.quantidade > 1);
+    // ── Lê estado atual antes de qualquer mudança ─────────────────────────
+    const qtdAnterior    = parseInt(card.dataset.qtd);
+    const statusAnterior = card.dataset.status;
 
-    // Mostra/oculta badge conforme quantidade
-    if (data.quantidade > 0) {
-        atualizarBadge(figurinhaId, card.dataset.status);
+    // ── Calcula a quantidade otimista localmente ───────────────────────────
+    // Não espera a API: aplica a mudança imediatamente no DOM
+    let qtdOtimista = qtdAnterior;
+    if (acao === 'incrementar') qtdOtimista = qtdAnterior + 1;
+    if (acao === 'decrementar') qtdOtimista = Math.max(0, qtdAnterior - 1);
+    if (acao === 'zerar')       qtdOtimista = 0;
+
+    // ── Aplica no DOM imediatamente (antes da resposta da API) ────────────
+    aplicarQtdNoDom(figurinhaId, card, qtdOtimista, statusAnterior);
+
+    try {
+        const resp = await fetch('/api/inventario', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: new URLSearchParams({
+                figurinha_id: figurinhaId,
+                album_id:     albumId,
+                acao:         acao,
+            }),
+        });
+
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        if (data.erro) throw new Error(data.erro);
+
+        // ── API confirmou: atualiza com os valores reais do servidor ──────
+        // (quantidade pode diferir se houve concorrência)
+        aplicarQtdNoDom(figurinhaId, card, data.quantidade, statusAnterior);
+        atualizarBarraSelecao(card, data.quantidade);
+        atualizarStatsGlobais(data);
+
+    } catch (erro) {
+        // ── Falhou: reverte o DOM para o estado anterior ──────────────────
+        console.warn('Revertendo atualização otimista:', erro);
+        aplicarQtdNoDom(figurinhaId, card, qtdAnterior, statusAnterior);
+        atualizarBarraSelecao(card, qtdAnterior);
+    }
+
+    aplicarFiltros();
+}
+
+// ── Aplica quantidade no card e atualiza classes visuais ──────────────────────
+// Separado para ser chamado tanto na atualização otimista quanto no rollback
+function aplicarQtdNoDom(figurinhaId, card, qtd, status) {
+    card.dataset.qtd = qtd;
+    document.getElementById(`qtd-${figurinhaId}`).textContent = qtd;
+    card.classList.toggle('tem',      qtd > 0);
+    card.classList.toggle('repetida', qtd > 1);
+
+    // Badge de status só aparece se tem figurinha
+    if (qtd > 0) {
+        atualizarBadge(figurinhaId, status);
     } else {
         card.dataset.status = 'livre';
         atualizarBadge(figurinhaId, 'livre');
     }
+}
 
-    // Atualiza barra e contagem da seleção
+// ── Atualiza barra de progresso e contagem da seleção ────────────────────────
+function atualizarBarraSelecao(card, qtd) {
     const selecaoId = card.dataset.selecao;
     const totalSel  = parseInt(card.dataset.total);
     const tenhoSel  = [...document.querySelectorAll(`[data-selecao="${selecaoId}"]`)]
@@ -583,18 +627,17 @@ async function atualizar(figurinhaId, albumId, acao) {
     document.getElementById(`cont-${selecaoId}`).textContent = `${tenhoSel}/${totalSel}`;
     document.getElementById(`barra-${selecaoId}`).style.width = pctSel + '%';
 
-    // Marca seleção como completa ou não
-    const row = card.closest('.selecao-row');
+    const row     = card.closest('.selecao-row');
     const completa = tenhoSel === totalSel;
     row.dataset.completa = completa ? '1' : '0';
     row.classList.toggle('selecao-completa', completa);
+}
 
-    // Stats globais
+// ── Atualiza os stats globais (% completo, faltantes, repetidas) ──────────────
+function atualizarStatsGlobais(data) {
     document.getElementById('stat-pct').textContent  = data.percentual.toFixed(1) + '%';
     document.getElementById('stat-falt').textContent = data.faltantes;
     document.getElementById('stat-rep').textContent  = data.repetidas;
-
-    aplicarFiltros();
 }
 
 // ── +1 / -1 em todas ─────────────────────────────────────────────────────────

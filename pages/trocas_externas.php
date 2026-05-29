@@ -223,7 +223,7 @@ function renderizarRepetidas(figurinhas) {
         for (const [sigla, sel] of Object.entries(selecoes)) {
             const divS = document.createElement('div'); divS.dataset.sigla=sigla;
             const mini = document.createElement('div'); mini.className='selecao-mini';
-            mini.innerHTML=`<img src="${sel.bandeira}" alt="${sigla}" onerror="this.style.display='none'">
+            mini.innerHTML=`<img src="${sel.bandeira}" alt="${sigla}" loading="lazy" onerror="this.style.display='none'">
                 <span class="selecao-sigla-badge">${sigla}</span><span>${sel.nome}</span>`;
             divS.appendChild(mini);
             const subGrid = document.createElement('div'); subGrid.className='figurinhas-grid';

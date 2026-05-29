@@ -17,6 +17,10 @@ function layoutInicio(string $titulo): void {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($titulo) ?> — IFC</title>
+
+    <!-- Token CSRF: lido pelo JS para injetar em todo POST -->
+    <meta name="csrf-token" content="<?= csrfToken() ?>">
+
     <link rel="stylesheet" href="<?= $appPath ?>/assets/css/style.css">
 </head>
 <body>
@@ -48,6 +52,7 @@ function layoutInicio(string $titulo): void {
                 <?php endif; ?>
             </div>
         </div>
+
         <?php if ($emTrocas): ?>
         <div class="trocas-subnav">
             <div class="container">
@@ -66,6 +71,7 @@ function layoutInicio(string $titulo): void {
             </div>
         </div>
         <?php endif; ?>
+
         <?php if ($emScanner): ?>
         <div class="trocas-subnav">
             <div class="container">
@@ -82,6 +88,7 @@ function layoutInicio(string $titulo): void {
         <?php endif; ?>
     </header>
     <main class="container">
+
 <!-- Overlay de loading global -->
 <div id="loading-overlay" style="display:none">
     <div class="loading-box">
@@ -104,6 +111,7 @@ function layoutInicio(string $titulo): void {
         </small>
     </div>
 </div>
+
 <?php }
 
 function layoutFim(): void { ?>
@@ -112,27 +120,50 @@ function layoutFim(): void { ?>
         <div class="container">IFC — Inventário de Figurinhas da Copa 2026</div>
     </footer>
     <script>
+    // ── Token CSRF global ─────────────────────────────────────────────────
+    // Lê o token da meta tag uma única vez e armazena na constante.
+    const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+    // ── Interceptor de fetch ──────────────────────────────────────────────
+    // Sobrescreve o fetch nativo para injetar csrf_token automaticamente
+    // em todo POST com Content-Type: application/x-www-form-urlencoded.
+    // Assim nenhuma página precisa ser alterada manualmente.
+    const _fetchOriginal = window.fetch.bind(window);
+    window.fetch = function(url, options = {}) {
+        const method = (options.method ?? 'GET').toUpperCase();
+
+        if (method === 'POST' && options.body instanceof URLSearchParams) {
+            // Clona para não mutar o objeto original do chamador
+            const body = new URLSearchParams(options.body);
+            if (!body.has('csrf_token')) {
+                body.append('csrf_token', CSRF_TOKEN);
+            }
+            options = { ...options, body };
+        }
+
+        return _fetchOriginal(url, options);
+    };
+
     // ── Loading overlay global ────────────────────────────────────────────
     let _loadingCancelado = false;
 
     function mostrarLoading(msg = 'Processando...', comCancelar = false) {
         _loadingCancelado = false;
-        document.getElementById('loading-msg').textContent   = msg;
-        document.getElementById('loading-overlay').style.display = 'flex';
-        document.getElementById('loading-progresso').style.display = 'none';
-        document.getElementById('loading-barra-fill').style.width  = '0%';
-        document.getElementById('loading-btn-cancelar').style.display    = comCancelar ? '' : 'none';
-        document.getElementById('loading-aviso-cancel').style.display    = comCancelar ? '' : 'none';
-        // Bloqueia cliques fora do overlay
+        document.getElementById('loading-msg').textContent          = msg;
+        document.getElementById('loading-overlay').style.display    = 'flex';
+        document.getElementById('loading-progresso').style.display  = 'none';
+        document.getElementById('loading-barra-fill').style.width   = '0%';
+        document.getElementById('loading-btn-cancelar').style.display = comCancelar ? '' : 'none';
+        document.getElementById('loading-aviso-cancel').style.display = comCancelar ? '' : 'none';
         document.getElementById('loading-overlay').style.pointerEvents = 'all';
     }
 
     function atualizarProgresso(atual, total, msg = null) {
         const pct = total > 0 ? Math.round((atual / total) * 100) : 0;
-        document.getElementById('loading-progresso').style.display   = '';
-        document.getElementById('loading-barra-fill').style.width    = pct + '%';
-        document.getElementById('loading-contador').textContent      = `${atual} / ${total} (${pct}%)`;
-        if (msg) document.getElementById('loading-msg').textContent  = msg;
+        document.getElementById('loading-progresso').style.display  = '';
+        document.getElementById('loading-barra-fill').style.width   = pct + '%';
+        document.getElementById('loading-contador').textContent     = `${atual} / ${total} (${pct}%)`;
+        if (msg) document.getElementById('loading-msg').textContent = msg;
     }
 
     function esconderLoading() {

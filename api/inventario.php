@@ -5,6 +5,7 @@ require_once __DIR__ . '/../config/session.php';
 
 header('Content-Type: application/json');
 requireLogin();
+validarCsrf();
 
 $usuario = usuarioLogado();
 $db      = getDB();

@@ -1,21 +1,16 @@
 <?php
 // config/session.php — Gerenciamento de sessão
 
-// ── Detecta ambiente antes do session_start ───────────────────────────────────
 $isLocal = in_array($_SERVER['HTTP_HOST'] ?? '', [
     'ifc.local', 'localhost', '127.0.0.1', '192.168.15.12',
 ]);
 
-// ── Configura cookie ANTES de iniciar a sessão ───────────────────────────────
-// httponly: JS não acessa o cookie (bloqueia roubo via XSS)
-// secure:   trafega só em HTTPS (desativado local para não quebrar dev)
-// samesite: cookie não é enviado em requisições cross-site (mitiga CSRF)
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
-        'lifetime' => 0,          // expira ao fechar o browser
+        'lifetime' => 0,
         'path'     => '/',
         'domain'   => '',
-        'secure'   => !$isLocal,  // HTTPS apenas em produção
+        'secure'   => !$isLocal,
         'httponly' => true,
         'samesite' => 'Strict',
     ]);
@@ -24,13 +19,28 @@ if (session_status() === PHP_SESSION_NONE) {
 
 define('DEV_USER_ID', '00000000-0000-0000-0000-000000000001');
 
-// ── Regenera o session ID após autenticação ───────────────────────────────────
-// Impede Session Fixation: troca o ID antigo por um novo e apaga o arquivo anterior
+function csrfToken(): string {
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function validarCsrf(): void {
+    $tokenEnviado = $_POST['csrf_token']
+        ?? $_SERVER['HTTP_X_CSRF_TOKEN']
+        ?? '';
+    if (!hash_equals(csrfToken(), $tokenEnviado)) {
+        http_response_code(403);
+        echo json_encode(['erro' => 'Token CSRF inválido']);
+        exit;
+    }
+}
+
 function regenerarSessao(): void {
     session_regenerate_id(true);
 }
 
-// ── Sessão de desenvolvimento local ──────────────────────────────────────────
 function iniciarSessaoDev(): void {
     if (!isset($_SESSION['ifc_usuario_id'])) {
         $_SESSION['ifc_usuario_id']    = DEV_USER_ID;
@@ -40,7 +50,6 @@ function iniciarSessaoDev(): void {
     }
 }
 
-// ── Retorna dados do usuário logado ou null ───────────────────────────────────
 function usuarioLogado(): array|null {
     if (!isset($_SESSION['ifc_usuario_id'])) {
         return null;
@@ -53,7 +62,6 @@ function usuarioLogado(): array|null {
     ];
 }
 
-// ── Protege rotas autenticadas ────────────────────────────────────────────────
 function requireLogin(): void {
     global $isLocal;
     if ($isLocal) {
@@ -67,19 +75,13 @@ function requireLogin(): void {
     }
 }
 
-// ── Logout completo ───────────────────────────────────────────────────────────
-// 1) Limpa os dados da sessão na memória
-// 2) Apaga o cookie no browser do usuário
-// 3) Destroi o arquivo de sessão no servidor
 function logout(): void {
     $_SESSION = [];
-
     if (ini_get('session.use_cookies')) {
         $p = session_get_cookie_params();
         setcookie(session_name(), '', time() - 42000,
             $p['path'], $p['domain'], $p['secure'], $p['httponly']
         );
     }
-
     session_destroy();
 }
