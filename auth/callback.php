@@ -9,18 +9,17 @@ function redirecionar(string $path): void {
     exit;
 }
 
-// Verifica state CSRF
+// ── Verifica state CSRF do OAuth ──────────────────────────────────────────────
 if (empty($_GET['state']) || $_GET['state'] !== ($_SESSION['oauth_state'] ?? '')) {
     die('Erro de segurança. Tente novamente.');
 }
 unset($_SESSION['oauth_state']);
 
-// Verifica código
 if (empty($_GET['code'])) {
     redirecionar('/auth/login');
 }
 
-// ── Troca code por token ──────────────────────
+// ── Troca code por token de acesso ────────────────────────────────────────────
 $response = file_get_contents(GOOGLE_TOKEN_URL, false, stream_context_create([
     'http' => [
         'method'  => 'POST',
@@ -42,7 +41,7 @@ if (empty($token['access_token'])) {
     redirecionar('/auth/login');
 }
 
-// ── Busca dados do usuário no Google ─────────
+// ── Busca dados do usuário no Google ─────────────────────────────────────────
 $userInfo = file_get_contents(GOOGLE_USERINFO_URL, false, stream_context_create([
     'http' => [
         'header' => 'Authorization: Bearer ' . $token['access_token'],
@@ -55,11 +54,10 @@ if (empty($google['email'])) {
     redirecionar('/auth/login');
 }
 
-// ── Cria ou atualiza usuário no banco ────────
+// ── Cria ou atualiza usuário no banco ─────────────────────────────────────────
 $db = getDB();
-$t  = 'ifc_'; // prefixo das tabelas
+$t  = tbl(''); // prefixo via função padrão do projeto
 
-// Busca por google_id ou email
 $stmt = $db->prepare("
     SELECT id, nome, email FROM {$t}usuarios
     WHERE google_id = :gid OR email = :email
@@ -69,12 +67,11 @@ $stmt->execute([':gid' => $google['sub'], ':email' => $google['email']]);
 $usuario = $stmt->fetch();
 
 if ($usuario) {
-    // Atualiza dados do Google
     $db->prepare("
         UPDATE {$t}usuarios SET
-            google_id  = :gid,
-            nome       = :nome,
-            avatar_url = :avatar,
+            google_id     = :gid,
+            nome          = :nome,
+            avatar_url    = :avatar,
             atualizado_em = NOW()
         WHERE id = :id
     ")->execute([
@@ -85,7 +82,6 @@ if ($usuario) {
     ]);
     $userId = $usuario['id'];
 } else {
-    // Cria novo usuário
     $userId = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
         mt_rand(0, 0xffff), mt_rand(0, 0xffff),
         mt_rand(0, 0xffff),
@@ -109,7 +105,6 @@ if ($usuario) {
         ':slug'   => $slug,
     ]);
 
-    // Cria álbum inicial
     $albumId = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
         mt_rand(0, 0xffff), mt_rand(0, 0xffff),
         mt_rand(0, 0xffff),
@@ -124,10 +119,13 @@ if ($usuario) {
     ")->execute([':id' => $albumId, ':uid' => $userId]);
 }
 
-// ── Inicia sessão ────────────────────────────
+// ── Inicia sessão autenticada ─────────────────────────────────────────────────
 $_SESSION['ifc_usuario_id']    = $userId;
 $_SESSION['ifc_usuario_nome']  = $google['name'];
 $_SESSION['ifc_usuario_email'] = $google['email'];
 $_SESSION['ifc_avatar']        = $google['picture'] ?? '';
+
+// Troca o session ID após autenticar — impede Session Fixation
+regenerarSessao();
 
 redirecionar('/albuns');
