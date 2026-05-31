@@ -90,7 +90,7 @@ function layoutInicio(string $titulo): void {
     <main class="container">
 
 <!-- Overlay de loading global -->
-<div id="loading-overlay" style="display:none">
+<div id="loading-overlay" style="display:none;" aria-modal="true" role="dialog">
     <div class="loading-box">
         <div class="loading-spinner">⟳</div>
         <p id="loading-msg">Processando...</p>
