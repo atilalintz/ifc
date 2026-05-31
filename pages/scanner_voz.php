@@ -321,6 +321,39 @@ function processarTextoDito(textoBruto) {
             return;
         }
     }
+    
+    // ── Álbum completo — coloca 1 em todas as figurinhas ─────────────────────
+	if (texto.includes('ÁLBUM COMPLETO') || texto.includes('ALBUM COMPLETO') ||
+	    texto.includes('TUDO COMPLETO')  || texto.includes('ADICIONAR TUDO')) {
+
+	    const totalFigurinhas = Object.values(limitesMaximos)
+		.reduce((acc, lim) => acc + lim, 0);
+
+	    logConsole(`📦 Inserindo álbum completo (${totalFigurinhas} figurinhas)...`);
+	    mostrarLoading('Processando álbum completo...', true);
+
+	    // Usa setTimeout para não travar a UI antes do loading aparecer
+	    setTimeout(() => {
+		let processadas = 0;
+
+		for (const [sigla, lim] of Object.entries(limitesMaximos)) {
+		    if (loadingFoiCancelado()) break;
+		    const nome = encontrarNomePorSigla(sigla);
+		    for (let n = 1; n <= lim; n++) {
+		        adicionarItem(sigla + String(n).padStart(2, '0'), nome, 1);
+		    }
+		    processadas += lim;
+		    atualizarProgresso(processadas, totalFigurinhas,
+		        `Processando figurinhas... ${processadas}/${totalFigurinhas}`);
+		}
+
+		esconderLoading();
+		emitirSom(true);
+		logConsole(`✅ ${processadas} figurinhas adicionadas à fila.`);
+	    }, 50);
+
+	    return;
+	}
 
     // País completo
     if (texto.includes('COMPLETO') || texto.includes('TODAS') || texto.includes('TODOS')) {
