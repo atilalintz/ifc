@@ -185,7 +185,7 @@ async function fetchAlbum(albumId, modo) {
         const r = await fetch('/api/trocas', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: `acao=figurinhas_album&album_id=${albumId}&modo=${modo}`,
+            body: new URLSearchParams({ acao: 'figurinhas_album', album_id: albumId, modo: modo }),
         });
         return await r.json();
     } catch { return { sucesso: false }; }

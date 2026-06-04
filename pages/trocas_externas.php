@@ -191,7 +191,7 @@ async function trocarAlbum() {
 async function carregarRepetidas() {
     const resp = await fetch('/api/trocas', {
         method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
-        body: `acao=minhas_repetidas&album_id=${albumId}`,
+        body: new URLSearchParams({ acao: 'minhas_repetidas', album_id: albumId }),
     });
     const data = await resp.json();
     const grid = document.getElementById('grid-repetidas');

@@ -493,7 +493,11 @@ async function confirmarLote() {
         const resp = await fetch('/api/scanner', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: 'confirmar=1&itens=' + encodeURIComponent(JSON.stringify(itensSalvar)) + '&album_id=' + albumId,
+            body: new URLSearchParams({
+	    confirmar: '1',
+	    itens:     JSON.stringify(itensSalvar),
+	    album_id:  albumId,
+	}),
         });
         const data = await resp.json();
 

@@ -340,7 +340,7 @@ async function avancarModal() {
         const resp = await fetch('/api/albuns', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: `acao=descartar&album_id=${modalAlbumId}`
+            body: new URLSearchParams({ acao: 'descartar', album_id: modalAlbumId })
         });
         await resp.json();
         mostrarEtapa(4);
@@ -356,7 +356,7 @@ async function avancarModal() {
     const resp = await fetch('/api/albuns', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `acao=preview&album_id=${modalAlbumId}`
+        body: new URLSearchParams({ acao: 'preview', album_id: modalAlbumId })
     });
     const data = await resp.json();
 
@@ -402,7 +402,7 @@ async function confirmarDistribuir() {
     const resp = await fetch('/api/albuns', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `acao=distribuir&album_id=${encodeURIComponent(modalAlbumId)}&album_destinos=${encodeURIComponent(destSelecionados.join(','))}`
+        body: new URLSearchParams({ acao: 'distribuir', album_id: modalAlbumId, album_destinos: destSelecionados.join(',') })
     });
     const data = await resp.json();
 
